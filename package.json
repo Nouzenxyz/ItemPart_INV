@@ -1,0 +1,31 @@
+{
+  "name": "itempart-inv",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline inventory system for a local office network",
+  "scripts": {
+    "dev": "npm run build:client && tsx watch src/server/index.ts",
+    "build:client": "tsc -p tsconfig.client.json",
+    "build": "tsc -p tsconfig.json && npm run build:client",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.0.0",
+    "cookie-parser": "^1.4.7",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.1",
+    "multer": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

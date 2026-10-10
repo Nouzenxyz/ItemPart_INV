@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Imarflex Inventory</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<main id="loginView" class="login" hidden>
+  <form id="loginForm" class="login-card">
+    <img class="login-logo" src="/imarflex-logo.png" alt="Imarflex. In every home.">
+    <h1>Spare Parts Inventory</h1>
+    <label>Username <input id="loginUser" autocomplete="username" required autofocus></label>
+    <label>Password <input id="loginPass" type="password" autocomplete="current-password" required></label>
+    <p class="err" id="loginErr"></p>
+    <button class="block">Log in</button>
+  </form>
+</main>
+
+<div id="appView" hidden>
+  <div id="appShell" class="app-shell">
+    <aside id="appSidebar" class="app-sidebar" aria-label="Main navigation">
+      <div class="sidebar-brand"><img src="/imarflex-logo.png" alt="Imarflex"><span>SPARE PARTS<br>INVENTORY</span></div>
+      <nav id="tabs" class="side-nav">
+        <span class="nav-label">WORKSPACE</span>
+        <button data-tab="parts" class="on">Parts</button>
+        <button data-tab="movements">Transactions</button>
+        <button data-tab="repairs">Repairs</button>
+        <button data-tab="reports">Reports</button>
+        <button data-tab="excel">Import / Export</button>
+        <span class="nav-label nav-label-manage">INVENTORY</span>
+        <button data-tab="stock">Stock line details</button>
+        <button data-tab="counts" class="edit-only">Physical count</button>
+        <button data-tab="backups" id="tabBackups" hidden>Backup &amp; restore</button>
+        <button data-tab="users" id="tabUsers" hidden>Users</button>
+      </nav>
+      <div class="sidebar-foot">Offline inventory system</div>
+    </aside>
+    <div class="app-main" id="appMain">
+  <header class="top">
+    <div class="top-in">
+      <button type="button" id="sidebarToggle" class="sidebar-toggle ghost" aria-label="Open navigation" aria-expanded="false" aria-controls="appSidebar">☰</button>
+      <img class="logo" src="/imarflex-logo.png" alt="Imarflex">
+      <span class="product">Spare Parts Inventory</span>
+      <span class="who"><span id="whoName"></span><button id="logoutBtn" class="link">Log out</button></span>
+    </div>
+  </header>
+
+  <section id="tab-stock" class="page" hidden>
+    <div class="page-intro"><h1>Stock line details</h1><p>View quantity by location and manage minimum stock, restock settings, or line history.</p></div>
+    <div id="summary" class="chips"></div>
+    <div class="bar">
+      <input id="search" type="search" placeholder="Search model, part code, description or location">
+      <select id="locFilter" aria-label="Location"></select>
+      <select id="statusFilter" aria-label="Show">
+        <option value="">All lines</option>
+        <option value="debt">Parts debt only</option>
+        <option value="zero">Zero stock</option>
+        <option value="low">Below minimum</option>
+      </select>
+      <span class="grow"></span>
+      <button id="addItemBtn" class="edit-only">Add item</button>
+      <button id="addLocBtn" class="admin-only ghost">Add location</button>
+    </div>
+    <div class="scroll">
+      <table class="inventory-table stock-table">
+        <thead><tr><th>Part code</th><th>Model</th><th>Description</th><th>Location</th><th class="num">Quantity</th><th></th></tr></thead>
+        <tbody id="stockBody"></tbody>
+      </table>
+    </div>
+    <div class="pager" id="stockPager"></div>
+  </section>
+
+  <section id="tab-parts" class="page parts-page">
+    <div class="page-intro"><h1>Parts</h1><p>Search for a part to see its total stock. Select a part row to view quantities by location.</p></div>
+    <div class="bar"><input id="partsSearch" type="search" placeholder="Search model, part code or description"><span class="grow"></span><button id="stockInBtn" class="edit-only">Receive stock · Stock In</button><button id="stockOutBtn" class="edit-only ghost">Issue stock · Stock Out</button><button id="partsCountBtn" class="edit-only ghost">Physical count</button><button id="addItemBtnParts" class="edit-only ghost">Add part</button><button id="addLocBtnParts" class="admin-only ghost">Add location</button></div>
+    <div id="partsSummary" class="chips"></div>
+    <div class="scroll parts-scroll"><table class="inventory-table parts-table"><thead><tr><th></th><th>Part code</th><th>Model(s)</th><th>Description(s)</th><th class="num">Total quantity</th></tr></thead><tbody id="partsBody"></tbody></table></div>
+    <div class="pager" id="partsPager"></div>
+  </section>
+
+  <section id="tab-reports" class="page" hidden>
+    <div class="page-intro"><h1>Reports</h1><p>Use Overview for current activity, Restock priorities to see lines needing attention, and Repair analysis to review service trends.</p></div>
+    <div class="report-tabs" role="tablist" aria-label="Reports"><button class="on" data-report-view="overview">Overview</button><button data-report-view="usage">Part usage</button><button data-report-view="restock">Restock priorities</button><button data-report-view="orders">Purchase orders</button><button data-report-view="setup">Restock setup</button><button data-report-view="repairs">Repair analysis</button></div>
+    <section id="report-overview" class="report-view">
+      <div id="reportKpis" class="report-kpis"></div>
+      <div class="report-charts"><article class="panel"><h2>Repair jobs by month</h2><div id="repairTrendChart" class="chart" aria-label="Repair jobs by month"></div></article><article class="panel"><h2>Most serviced appliance models</h2><div id="repairModelChart" class="chart" aria-label="Most serviced appliance models"></div></article></div>
+      <div class="panel"><h2>Needs attention</h2><div id="reportAttention" class="attention-list"></div></div>
+    </section>
+    <section id="report-usage" class="report-view" hidden>
+      <div class="panel">
+        <div class="panel-heading"><div><h2>Part usage</h2><p class="hint">Compare parts issued with recorded returns. Net used is issued minus returned; transfers and stock counts are excluded.</p></div>
+          <div class="usage-controls"><label>Period<select id="usagePeriod"><option value="3m">Last 3 months</option><option value="12m">Last 12 months</option></select></label><label>Location<select id="usageLocation"><option value="0">All locations</option></select></label><a class="btn ghost small" id="exportUsageBtn" href="/api/export/usage-report?period=3m">Export this report</a></div>
+        </div>
+        <div class="bar"><input id="usageSearch" type="search" placeholder="Filter by model, part code, description or location"></div>
+        <div id="usageKpis" class="report-kpis"></div>
+        <div class="report-charts"><article class="panel"><h2>Monthly stock usage (last 12 months)</h2><div id="usageTrendChart" class="chart" aria-label="Monthly stock issued and returned"></div><p class="chart-legend"><span><i></i>Issued</span><span><i></i>Returned</span></p></article><article class="panel"><h2>Highest net usage</h2><div id="usageTopChart" class="chart"></div></article></div>
+        <h2>Usage by stock line</h2><p class="hint">Lines are ranked by net quantity used. Days of stock is estimated from the selected period's average daily use.</p>
+        <div class="scroll"><table><thead><tr><th>Part</th><th>Location</th><th class="num">On hand</th><th class="num">Issued</th><th class="num">Returned</th><th class="num">Net used</th><th class="num">Avg / month</th><th class="num">Est. days in stock</th></tr></thead><tbody id="usageBody"></tbody></table></div>
+        <div class="pager" id="usagePager"></div>
+      </div>
+    </section>
+    <section id="report-restock" class="report-view" hidden>
+      <div class="panel"><div class="panel-heading"><div><h2>Restock priorities</h2><p class="hint">All lines needing attention, ranked highest priority first. Select lines and adjust quantities to create a purchase draft.</p></div><div class="row"><a class="btn ghost small" href="/api/export/restock-priorities">Export list</a><button class="ghost small" id="refreshRestock">Refresh</button><button class="small edit-only" id="createOrderBtn">Create purchase draft</button></div></div>
+        <div class="bar"><input id="restockSearch" type="search" placeholder="Search part code, model, description or location" aria-label="Search restock priorities"></div>
+        <div class="scroll restock-scroll"><table class="inventory-table restock-table"><thead><tr><th>Select</th><th>Priority</th><th>Part</th><th>Location</th><th class="num">On hand</th><th class="num">90-day use</th><th>Reason</th><th class="num">Suggested qty</th><th class="num">Order qty</th><th></th></tr></thead><tbody id="restockBody"></tbody></table></div>
+        <div class="pager" id="restockPager"></div>
+      </div>
+    </section>
+    <section id="report-orders" class="report-view" hidden>
+      <div class="panel"><div class="panel-heading"><div><h2>Purchase orders</h2><p class="hint">Create draft orders from Restock priorities, mark them ordered, then receive stock against the order. Partial deliveries are supported.</p></div><button class="ghost small" id="refreshOrders">Refresh</button></div>
+        <div class="scroll"><table><thead><tr><th>Purchase order</th><th>Created</th><th>Supplier</th><th>Status</th><th class="num">Part lines</th><th class="num">Ordered units</th><th class="num">Received units</th><th></th></tr></thead><tbody id="ordersBody"></tbody></table></div>
+      </div>
+    </section>
+    <section id="report-setup" class="report-view" hidden>
+      <div class="panel"><div class="panel-heading"><div><h2>Restock profiles to complete</h2><p class="hint">A complete profile needs supplier lead time, safety stock, and target coverage days. These values help calculate when and how much to replenish.</p></div><button class="ghost small" id="refreshProfiles">Refresh</button></div>
+        <div class="scroll"><table><thead><tr><th>Part</th><th>Location</th><th class="num">On hand</th><th>Lead time</th><th>Safety stock</th><th>Target coverage</th><th>Missing values</th><th></th></tr></thead><tbody id="profileSetupBody"></tbody></table></div>
+        <div class="pager" id="profileSetupPager"></div>
+      </div>
+    </section>
+    <section id="report-repairs" class="report-view" hidden>
+      <div class="panel repair-analytics"><h2>Repair and return analysis</h2><p class="hint">Counts are based on repair records and linked part lines. Repeat appliances require a recorded serial number.</p>
+      <div class="bar"><input id="repairReportSearch" type="search" placeholder="Filter appliance model, part code or job number"><label class="date-filter">From <input id="repairDateFrom" type="date" aria-label="Repair report from date"></label><label class="date-filter">To <input id="repairDateTo" type="date" aria-label="Repair report to date"></label></div>
+      <div class="scroll"><table><thead><tr><th>Part code</th><th>Appliance model</th><th>Description</th><th>Job numbers</th><th class="num">Repair jobs</th><th class="num">Repeat appliances</th><th class="num">Issued</th><th class="num">Installed</th><th class="num">Returned</th><th class="num">Defect / warranty</th><th class="num">Avg days to close</th><th>Return reasons</th></tr></thead><tbody id="repairReportBody"></tbody></table></div>
+      </div>
+    </section>
+  </section>
+
+  <section id="tab-repairs" class="page" hidden>
+    <div class="page-intro"><h1>Repairs</h1><p>Create a job for an appliance repair, then link its parts through Stock Out to keep the repair history together.</p></div>
+    <div class="bar"><input id="repairsSearch" type="search" placeholder="Search job number, appliance model, serial or technician"><select id="repairsStatus" aria-label="Repair status"><option value="">All repair jobs</option><option value="OPEN">Open</option><option value="COMPLETED">Completed</option></select><span class="grow"></span><button id="addRepairBtn" class="edit-only">New repair job</button></div>
+    <div id="repairsSummary" class="chips"></div>
+    <div class="scroll"><table><thead><tr><th>Job number</th><th>Opened</th><th>Appliance model</th><th>Serial no.</th><th>Technician</th><th>Status</th><th class="num">Part lines</th><th class="num">Issued</th><th>Outcome</th></tr></thead><tbody id="repairsBody"></tbody></table></div>
+  </section>
+
+  <section id="tab-movements" class="page" hidden>
+    <div class="page-intro"><h1>Transactions</h1><p>Find a Stock In or Stock Out record. Select its transaction number to open the full receipt.</p></div>
+    <div class="bar">
+      <input id="moveSearch" type="search" placeholder="Search transaction number, part, reference or technician">
+      <label class="date-filter">From <input id="moveDateFrom" type="date" aria-label="History from date"></label>
+      <label class="date-filter">To <input id="moveDateTo" type="date" aria-label="History to date"></label>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Date</th><th>Stock In / Out No.</th><th>Type</th><th class="num">Item lines</th><th class="num">Units</th><th>Reference / technician</th><th>Entered by</th></tr></thead>
+        <tbody id="moveBody"></tbody>
+      </table>
+    </div>
+    <div class="pager" id="movePager"></div>
+  </section>
+
+  <section id="tab-counts" class="page" hidden>
+    <div class="page-intro"><h1>Physical count</h1><p>Enter the quantity you actually counted. Review differences and add a reason before posting adjustments.</p></div>
+    <div class="bar" id="countControls"><input id="countSearch" type="search" placeholder="Search model, part code, description"><select id="countLocation" aria-label="Count location"></select><span class="grow"></span><button id="reviewCountBtn" class="edit-only">Review entered counts</button></div>
+    <div class="hint">Blank count fields are skipped. Count quantities must be zero or more. You can count one location at a time.</div>
+    <div id="countWorksheet"><div class="scroll"><table><thead><tr><th>Part code</th><th>Model</th><th>Description</th><th>Location</th><th class="num">System quantity</th><th>Counted quantity</th><th class="num">Difference</th><th>Reason if different</th></tr></thead><tbody id="countBody"></tbody></table></div>
+      <div class="pager" id="countPager"></div></div>
+    <section id="countReview" class="panel count-review" hidden></section>
+  </section>
+
+  <section id="tab-excel" class="page" hidden>
+    <div class="page-intro"><h1>Import / Export</h1><p>Use Import to add or update inventory from a spreadsheet. Export to download a copy of your records.</p></div>
+    <div class="cols">
+      <div class="panel edit-only">
+        <h2>Import inventory</h2>
+        <p class="hint">Drop your inventory Excel file here, exactly as it is. It is checked first, and nothing is saved until you press Save import.</p>
+        <label class="drop" id="drop">
+          <strong>Drag and drop the Excel file here</strong>
+          <span>or click to choose a file</span>
+          <input id="impFile" type="file" accept=".xlsx" hidden>
+        </label>
+        <p id="fileName" class="hint"></p>
+        <div id="impResult" aria-live="polite"></div>
+        <p class="row"><button id="impApply" class="go" hidden>Save import</button></p>
+        <p class="hint">Each row is matched to a line by model, part code, description and location. A match only has its quantity updated, anything else is added as a new line, and nothing is ever deleted.</p>
+        <p class="row"><a class="btn ghost" href="/api/template/inventory">Download blank template</a></p>
+      </div>
+      <div class="panel">
+        <h2>Export</h2>
+        <p class="hint">Download the current data as an Excel file. The inventory export uses the same layout as your inventory sheet, so it can be edited and imported again.</p>
+        <p class="row"><a class="btn" href="/api/export/inventory">Export inventory</a> <a class="btn ghost" href="/api/export/debt">Export parts debt</a> <a class="btn ghost" href="/api/export/movements">Export history</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-users" class="page" hidden>
+    <div class="bar"><button id="addUserBtn">Add user</button></div>
+    <div class="scroll short">
+      <table>
+        <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody id="userBody"></tbody>
+      </table>
+    </div>
+    <p class="hint">Admin can do everything. Staff can change stock and import. Viewer can only look and export.</p>
+  </section>
+  <section id="tab-backups" class="page" hidden>
+    <div class="page-intro"><h1>Backup &amp; restore</h1><p>Backups protect inventory and transaction history if the server or database is damaged.</p></div>
+    <div class="panel"><h2>Create a backup</h2><p class="hint">Automatic backups run every six hours on the server. Admins can also create one now and download it for safekeeping.</p><p class="row"><button id="backupNowBtn">Create backup now</button><button class="ghost" id="refreshBackupsBtn">Refresh list</button></p><div class="scroll short"><table><thead><tr><th>Backup file</th><th>Date created</th><th class="num">Size</th><th></th></tr></thead><tbody id="backupBody"></tbody></table></div></div>
+    <div class="panel backup-restore-help"><h2>Restore a backup</h2><ol><li>Stop the inventory app on the server so the database is not in use.</li><li>Make a separate copy of the current <code>data/inventory.db</code> before replacing anything.</li><li>Download the selected backup and copy it into the server’s <code>data</code> folder as <code>inventory.db</code>.</li><li>Start the app and check the stock, users, and transaction history.</li></ol><p class="hint">A restore returns the system to the backup date. Transactions recorded after that backup will not be in the restored database.</p></div>
+  </section>
+  <button type="button" id="helpFab" class="help-fab" aria-label="Open quick help" title="Quick help">?</button>
+  <dialog id="helpDialog" class="help-dialog" aria-labelledby="helpTitle">
+    <header class="help-dialog-head"><div><h1 id="helpTitle">Quick help</h1><p>Guidance for common tasks in the inventory app.</p></div><button type="button" class="ghost help-close" id="helpClose" aria-label="Close help">×</button></header>
+    <div class="help-grid">
+      <article class="panel"><span class="help-number">1</span><h2>Find a part</h2><ol><li>Open <strong>Parts</strong>.</li><li>Search by model, part code, or description.</li><li>Select a part row to see its quantity at each location.</li></ol><button class="ghost" data-help-tab="parts">Go to Parts</button></article>
+      <article class="panel"><span class="help-number">2</span><h2>Receive or issue stock</h2><ol><li>On Parts, choose <strong>Receive stock</strong> or <strong>Issue stock</strong>.</li><li>Search and add each part and enter its quantity.</li><li>Review the items and details, then confirm to save. The receipt shows previous quantity and new total.</li></ol><button class="ghost" data-help-tab="parts">Go to stock actions</button></article>
+      <article class="panel"><span class="help-number">3</span><h2>Record a repair</h2><ol><li>Open <strong>Repairs</strong> and choose <strong>New repair job</strong>.</li><li>Enter the appliance model and any serial number or problem details.</li><li>Use <strong>Stock Out for repair</strong> on the job to link parts issued to it.</li></ol><button class="ghost" data-help-tab="repairs">Go to Repairs</button></article>
+      <article class="panel"><span class="help-number">4</span><h2>Check transactions and reports</h2><ol><li>Open <strong>Transactions</strong> and search a stock or requisition number.</li><li>Select a transaction number to view or print its receipt.</li><li>Use <strong>Reports</strong> for repair trends and restock priorities.</li></ol><button class="ghost" data-help-tab="reports">Go to Reports</button></article>
+      <article class="panel"><span class="help-number">5</span><h2>Import or export a spreadsheet</h2><ol><li>Open <strong>Import / Export</strong>.</li><li>Choose the Excel file and review the check results.</li><li>Save the import only after checking the rows and warnings.</li></ol><button class="ghost" data-help-tab="excel">Go to Import / Export</button></article>
+      <article class="panel" id="helpCountCard"><span class="help-number">6</span><h2>Count stock</h2><ol><li>Open <strong>Physical count</strong> from the navigation and choose a location.</li><li>Enter the quantity actually counted and a reason for any difference.</li><li>Review the old and counted amounts before posting adjustments.</li></ol><button class="ghost" data-help-tab="counts">Go to Physical count</button></article>
+      <article class="panel"><span class="help-number">7</span><h2>Prepare a restock order</h2><ol><li>In Reports, open <strong>Restock priorities</strong> and select parts.</li><li>Check the suggested quantities, then create a purchase draft.</li><li>Mark it ordered. Use <strong>Receive stock</strong> as deliveries arrive; partial receipts are allowed.</li></ol><button class="ghost" data-help-tab="reports">Go to Reports</button></article>
+      <article class="panel" id="helpBackupCard"><span class="help-number">8</span><h2>Back up data</h2><ol><li>Admins can create and download a backup under <strong>Backup &amp; restore</strong> in the navigation.</li><li>Automatic backups also run on the server every six hours.</li><li>To restore, stop the server first and follow the steps on the Backup &amp; restore page.</li></ol><button class="ghost" data-help-tab="backups">Go to Backup &amp; restore</button></article>
+    </div>
+  </dialog>
+    </div>
+  </div>
+</div>
+
+<dialog id="dlg"><form id="dlgForm"></form></dialog>
+<div id="toast" role="status" hidden></div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
