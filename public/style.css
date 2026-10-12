@@ -238,7 +238,8 @@ td.neg { color: var(--red-ink); font-weight: 600; }
 .help-grid ol { color: var(--muted); padding-left: 1.2rem; min-height: 6rem; }
 .help-grid li { padding: .1rem 0; }
 .help-number { display: inline-grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: var(--blue-tint); color: var(--blue); font-weight: 700; }
-.help-fab { position: fixed; z-index: 20; right: 1.25rem; bottom: 1.25rem; width: 3.25rem; height: 3.25rem; padding: 0; border-radius: 50%; box-shadow: 0 3px 12px #17212b33; font-size: 1.5rem; line-height: 1; }
+.help-fab { flex: 0 0 auto; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%; box-shadow: 0 2px 8px #17212b24; font-size: 1.25rem; line-height: 1; opacity: .48; transition: opacity .16s ease, box-shadow .16s ease, transform .16s ease; }
+.help-fab:hover, .help-fab:focus-visible { opacity: 1; box-shadow: 0 5px 18px #17212b4d; transform: scale(1.06); }
 .help-dialog { width: min(900px, calc(100vw - 2rem)); max-width: 900px; max-height: min(85vh, 800px); padding: 1.25rem; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); box-shadow: 0 12px 40px #17212b40; }
 .help-dialog::backdrop { background: #17212b80; }
 .help-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }

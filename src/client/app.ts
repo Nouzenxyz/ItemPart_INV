@@ -210,6 +210,16 @@ $('appView').addEventListener('click', (event) => {
 $('helpFab').addEventListener('click', () => $<HTMLDialogElement>('helpDialog').showModal());
 $('helpClose').addEventListener('click', () => $<HTMLDialogElement>('helpDialog').close());
 
+for (const id of ['dlg', 'helpDialog']) {
+  const dialog = $<HTMLDialogElement>(id);
+  dialog.addEventListener('click', (event) => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    const clickOutside = event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
+    if (clickOutside) dialog.close();
+  });
+}
+
 function switchTab(tab: string) {
   document.querySelectorAll<HTMLElement>('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   document.querySelectorAll<HTMLElement>('.page').forEach((p) => (p.hidden = p.id !== `tab-${tab}`));

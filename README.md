@@ -13,7 +13,9 @@ Optional: **DB Browser for SQLite** if you ever want to look inside the database
 
 ## First run (on a computer with internet)
 
-Open the folder in VS Code, open the terminal (Ctrl + `), then:
+On Windows, double-click **Start Inventory.vbs**. The first launch installs dependencies and builds the app if needed, so it requires an internet connection and may take a few minutes. The app starts in the background and opens in your browser. When finished, double-click **Stop Inventory.vbs**. Keep the computer on and awake while people are using the app.
+
+You can also start it manually from a terminal in the project folder:
 
 ```
 npm install
@@ -34,7 +36,7 @@ npm run build
 npm start
 ```
 
-The server window prints the addresses other computers can use, for example `http://192.168.1.10:3000`.
+The server prints the addresses other computers can use, for example `http://192.168.1.10:3000`. When started with the background shortcut, see `.runtime/server.out.log` for those addresses.
 
 1. Give the server computer a fixed IP address (in the router or in Windows network settings), so the link never changes.
 2. Allow port 3000 through Windows Firewall on the server computer.

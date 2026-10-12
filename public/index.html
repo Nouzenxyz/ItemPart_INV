@@ -46,6 +46,7 @@
       <img class="logo" src="/imarflex-logo.png" alt="Imarflex">
       <span class="product">Spare Parts Inventory</span>
       <span class="who"><span id="whoName"></span><button id="logoutBtn" class="link">Log out</button></span>
+      <button type="button" id="helpFab" class="help-fab" aria-label="Open quick help" title="Quick help">?</button>
     </div>
   </header>
 
@@ -201,7 +202,6 @@
     <div class="panel"><h2>Create a backup</h2><p class="hint">Automatic backups run every six hours on the server. Admins can also create one now and download it for safekeeping.</p><p class="row"><button id="backupNowBtn">Create backup now</button><button class="ghost" id="refreshBackupsBtn">Refresh list</button></p><div class="scroll short"><table><thead><tr><th>Backup file</th><th>Date created</th><th class="num">Size</th><th></th></tr></thead><tbody id="backupBody"></tbody></table></div></div>
     <div class="panel backup-restore-help"><h2>Restore a backup</h2><ol><li>Stop the inventory app on the server so the database is not in use.</li><li>Make a separate copy of the current <code>data/inventory.db</code> before replacing anything.</li><li>Download the selected backup and copy it into the server’s <code>data</code> folder as <code>inventory.db</code>.</li><li>Start the app and check the stock, users, and transaction history.</li></ol><p class="hint">A restore returns the system to the backup date. Transactions recorded after that backup will not be in the restored database.</p></div>
   </section>
-  <button type="button" id="helpFab" class="help-fab" aria-label="Open quick help" title="Quick help">?</button>
   <dialog id="helpDialog" class="help-dialog" aria-labelledby="helpTitle">
     <header class="help-dialog-head"><div><h1 id="helpTitle">Quick help</h1><p>Guidance for common tasks in the inventory app.</p></div><button type="button" class="ghost help-close" id="helpClose" aria-label="Close help">×</button></header>
     <div class="help-grid">
