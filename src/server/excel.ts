@@ -81,7 +81,7 @@ export async function templateInventory(): Promise<Buffer> {
 
 export async function exportMovements(): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('History');
+  const ws = wb.addWorksheet('Movements');
   ws.columns = [
     { header: 'Date', key: 'date', width: 20 },
     { header: 'PartCode', key: 'part', width: 16 },
