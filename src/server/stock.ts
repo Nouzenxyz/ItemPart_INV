@@ -84,7 +84,7 @@ export const setQuantity = db.transaction(
     const diff = target - line.quantity;
     if (diff === 0) return false;
     setQty.run(target, itemId);
-    insertMovement.run(itemId, line.location_id, diff, target, type, '', '', '', note, null, userId);
+    insertMovement.run(itemId, line.location_id, diff, target, type, '', '', '', note, null, userId, null);
     return true;
   }
 );
@@ -158,7 +158,7 @@ export const countStockBatch = db.transaction(
 export function logEdit(itemId: number, userId: number | null, note: string) {
   const line = getLine.get(itemId) as Line | undefined;
   if (!line) return;
-  insertMovement.run(itemId, line.location_id, 0, line.quantity, 'EDIT', '', '', '', note, null, userId);
+  insertMovement.run(itemId, line.location_id, 0, line.quantity, 'EDIT', '', '', '', note, null, userId, null);
 }
 
 const findDestination = db.prepare(
