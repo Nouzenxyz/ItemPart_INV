@@ -11,7 +11,7 @@ interface MoveRow {
   key: string; created_at: string; transaction_no: string; type: string; line_count: number; units: number;
   reference: string; technician: string; repair_job_no: string | null; user: string | null;
 }
-interface PartRow { id: number; model: string; part_code: string; description: string; total_quantity: number }
+interface PartRow { id: number; model: string | null; part_code: string; description: string | null; total_quantity: number }
 interface RepairJob { id: number; job_no: string; appliance_model: string; serial_no: string; technician: string; status: 'OPEN' | 'COMPLETED'; opened_at: string; closed_at: string | null; repair_outcome: string; part_lines: number; qty_issued: number }
 interface Summary { lines: number; units: number; debt_lines: number; debt_units: number }
 interface ImportResult {
@@ -263,7 +263,8 @@ async function loadParts(page: number = partsPage) {
   const pages = Math.max(1, Math.ceil(data.total / PARTS_PAGE_SIZE));
   if (page > pages) return loadParts(pages);
   renderPager($('partsPager'), page, data.total, (nextPage) => void loadParts(nextPage), PARTS_PAGE_SIZE);
-  $('partsBody').innerHTML = data.rows.map((r) => `<tr class="part-row"><td><button class="small ghost expand-part" data-part-id="${r.id}" aria-expanded="false" aria-label="Show locations for ${esc(r.part_code)}">＋</button></td><td class="code">${esc(r.part_code)}</td><td>${esc(r.model)}</td><td>${esc(r.description)}</td><td class="num">${num(r.total_quantity)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No matching parts.</td></tr>';
+  const values = (value: string | null) => value ? value.split('\u001f').filter(Boolean) : [];
+  $('partsBody').innerHTML = data.rows.map((r) => `<tr class="part-row"><td><button class="small ghost expand-part" data-part-id="${r.id}" aria-expanded="false" aria-label="Show locations for ${esc(r.part_code)}">＋</button></td><td class="code">${esc(r.part_code)}</td><td><div class="part-model-list">${values(r.model).map((model) => `<span class="part-model-tag">${esc(model)}</span>`).join('') || '<span class="hint">No model</span>'}</div></td><td><div class="part-description-list">${values(r.description).map((description) => `<span>${esc(description)}</span>`).join('') || '<span class="hint">No description</span>'}</div></td><td class="num">${num(r.total_quantity)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No matching parts.</td></tr>';
 }
 let partsTimer: number | undefined;
 $('partsSearch').addEventListener('input', () => { clearTimeout(partsTimer); partsTimer = window.setTimeout(() => void loadParts(1), 250); });
@@ -280,10 +281,10 @@ $('partsBody').addEventListener('click', async (event) => {
   button.textContent = '…';
   button.setAttribute('aria-expanded','true');
   try {
-    const locationsByPart = await api<{ location: string | null; quantity: number; lines: number }[]>(`/parts/${button.dataset.partId}/locations`);
+    const locationsByPart = await api<{ location: string | null; model: string; description: string; quantity: number; lines: number }[]>(`/parts/${button.dataset.partId}/locations`);
     if (token !== expandedPartToken || !row.isConnected) return;
     const detail = document.createElement('tr'); detail.className = 'part-locations';
-    detail.innerHTML = `<td colspan="5"><div class="location-breakdown"><strong>Combined quantity for this part code by location</strong><table><thead><tr><th>Location</th><th class="num">Quantity</th><th class="num">Stock entries</th></tr></thead><tbody>${locationsByPart.map((l) => `<tr><td>${esc(l.location ?? 'No location')}</td><td class="num">${num(l.quantity)}</td><td class="num">${num(l.lines)}</td></tr>`).join('')}</tbody></table></div></td>`;
+    detail.innerHTML = `<td colspan="5"><div class="location-breakdown"><strong>Part code breakdown by location and model</strong><table><thead><tr><th>Location</th><th>Model</th><th>Description</th><th class="num">Quantity</th><th class="num">Stock entries</th></tr></thead><tbody>${locationsByPart.map((l) => `<tr><td>${esc(l.location ?? 'No location')}</td><td><span class="part-model-tag">${esc(l.model || 'No model')}</span></td><td>${esc(l.description || 'No description')}</td><td class="num">${num(l.quantity)}</td><td class="num">${num(l.lines)}</td></tr>`).join('')}</tbody></table></div></td>`;
     row.after(detail); button.textContent = '−';
   } catch (error) { if (token === expandedPartToken) { button.textContent = '＋'; button.setAttribute('aria-expanded','false'); toast((error as Error).message); } }
 });

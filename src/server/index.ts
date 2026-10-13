@@ -132,9 +132,9 @@ api.get('/parts', (req, res) => {
   const requestedOffset = int(req.query.offset);
   const offset = Number.isInteger(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
   const rows = db.prepare(`SELECT MIN(i.id) AS id,
-      GROUP_CONCAT(DISTINCT NULLIF(TRIM(i.model),'')) AS model,
+      (SELECT group_concat(model,char(31)) FROM (SELECT DISTINCT NULLIF(TRIM(m.model),'') AS model FROM items m WHERE m.archived=0 AND m.part_code=i.part_code COLLATE NOCASE AND NULLIF(TRIM(m.model),'') IS NOT NULL ORDER BY model)) AS model,
       MIN(i.part_code) AS part_code,
-      GROUP_CONCAT(DISTINCT NULLIF(TRIM(i.description),'')) AS description,
+      (SELECT group_concat(description,char(31)) FROM (SELECT DISTINCT NULLIF(TRIM(d.description),'') AS description FROM items d WHERE d.archived=0 AND d.part_code=i.part_code COLLATE NOCASE AND NULLIF(TRIM(d.description),'') IS NOT NULL ORDER BY description)) AS description,
       SUM(i.quantity) AS total_quantity
     FROM items i
     WHERE i.archived=0 AND EXISTS (
@@ -155,10 +155,10 @@ api.get('/parts/:id/locations', (req, res) => {
   const exemplar = db.prepare('SELECT part_code FROM items WHERE id=? AND archived=0').get(id) as
     { part_code: string } | undefined;
   if (!exemplar) throw new StockError('That part is no longer available.');
-  res.json(db.prepare(`SELECT i.location_id,l.name AS location,SUM(i.quantity) AS quantity,COUNT(*) AS lines
+  res.json(db.prepare(`SELECT i.location_id,l.name AS location,i.model,i.description,SUM(i.quantity) AS quantity,COUNT(*) AS lines
     FROM items i LEFT JOIN locations l ON l.id=i.location_id
     WHERE i.archived=0 AND i.part_code=? COLLATE NOCASE
-    GROUP BY i.location_id ORDER BY l.name`).all(exemplar.part_code));
+    GROUP BY i.location_id,i.model,i.description ORDER BY l.name,i.model,i.description`).all(exemplar.part_code));
 });
 
 api.get('/consumption', (_req, res) => {

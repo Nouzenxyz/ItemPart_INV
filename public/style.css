@@ -189,6 +189,9 @@ td.neg { color: var(--red-ink); font-weight: 600; }
 .parts-table th:nth-child(3), .parts-table td:nth-child(3) { width: 130px; }
 .parts-table th:nth-child(5), .parts-table td:nth-child(5) { width: 135px; }
 .parts-table .part-row td { padding-top: .28rem; padding-bottom: .28rem; }
+.part-model-list, .part-description-list { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .4rem; }
+.part-model-tag { display: inline-block; max-width: 100%; border: 1px solid #d5e3f0; border-radius: 999px; background: #f1f6fb; color: #164d7a; padding: .12rem .5rem; font-size: .82rem; font-weight: 650; line-height: 1.35; white-space: normal; }
+.part-description-list > span:not(.hint) { display: block; width: 100%; color: var(--muted); font-size: .86rem; line-height: 1.35; }
 .restock-table { min-width: 1120px; }
 .restock-table th:nth-child(1), .restock-table td:nth-child(1) { width: 4%; }
 .restock-table th:nth-child(2), .restock-table td:nth-child(2) { width: 8%; }
@@ -206,8 +209,10 @@ td.neg { color: var(--red-ink); font-weight: 600; }
 .expand-part { min-width: 2.2rem; padding-inline: .4rem !important; font-size: 1.05rem !important; }
 .part-row { cursor: pointer; }
 .part-locations td { background: #f8fafc; padding: .35rem 1rem 1rem 3.6rem; }
-.location-breakdown { max-width: 720px; border-left: 3px solid var(--blue); padding: .4rem .8rem; background: var(--panel); }
+.location-breakdown { max-width: 100%; border-left: 3px solid var(--blue); padding: .4rem .8rem; background: var(--panel); }
 .location-breakdown > strong { display: block; color: var(--muted); font-size: .85rem; padding: .35rem .5rem; }
+.location-breakdown table { min-width: 760px; }
+.location-breakdown td { vertical-align: top; }
 .transaction-link { color: var(--blue); text-decoration: underline; padding: .1rem; }
 .repair-job-link { color: var(--blue); text-decoration: underline; padding: .1rem; }
 .job-status { display: inline-block; padding: .16rem .55rem; border-radius: 20px; background: #fff5dd; color: #805700; font-size: .8rem; font-weight: 700; white-space: nowrap; }
