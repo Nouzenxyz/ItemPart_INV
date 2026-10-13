@@ -42,16 +42,20 @@ try {
 
   if (-not (Test-Path (Join-Path $projectFolder 'node_modules'))) {
     Show-Message 'First-time setup is starting. It will download the app dependencies and may take a few minutes.' 64
-    & npm install *> $setupLog
-    if ($LASTEXITCODE -ne 0) {
+    $env:ITEMPART_SETUP_LOG = $setupLog
+    $install = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /c npm install > `"%ITEMPART_SETUP_LOG%`" 2>&1" -WorkingDirectory $projectFolder -WindowStyle Hidden -Wait -PassThru
+    Remove-Item Env:ITEMPART_SETUP_LOG -ErrorAction SilentlyContinue
+    if ($install.ExitCode -ne 0) {
       Show-Message "Setup could not install dependencies. Check the internet connection and see:`n$setupLog"
       exit 1
     }
   }
 
   if (-not (Test-Path (Join-Path $projectFolder 'dist\index.js'))) {
-    & npm run build *> $setupLog
-    if ($LASTEXITCODE -ne 0) {
+    $env:ITEMPART_SETUP_LOG = $setupLog
+    $build = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /c npm run build > `"%ITEMPART_SETUP_LOG%`" 2>&1" -WorkingDirectory $projectFolder -WindowStyle Hidden -Wait -PassThru
+    Remove-Item Env:ITEMPART_SETUP_LOG -ErrorAction SilentlyContinue
+    if ($build.ExitCode -ne 0) {
       Show-Message "The app could not be built. See:`n$setupLog"
       exit 1
     }
