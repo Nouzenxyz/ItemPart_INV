@@ -16,11 +16,22 @@ export interface LineRow {
 
 export type StatusFilter = '' | 'debt' | 'zero' | 'low';
 
-const FROM_WHERE = `
+export function buildPartSearch(search: string, itemAlias = 'i', locationAlias = 'l') {
+  const terms = search.split(',').map((term) => term.trim()).filter(Boolean).slice(0, 20);
+  const params: Record<string, string> = {};
+  const clause = terms.map((term, index) => {
+    const key = `q${index}`;
+    params[key] = `%${term}%`;
+    return `(${itemAlias}.part_code LIKE @${key} OR ${itemAlias}.description LIKE @${key} OR ${itemAlias}.model LIKE @${key} OR ${locationAlias}.name LIKE @${key})`;
+  }).join(' OR ') || '1=1';
+  return { clause, params };
+}
+
+const fromWhere = (searchClause: string) => `
   FROM items i
   LEFT JOIN locations l ON l.id = i.location_id
   WHERE i.archived = 0
-    AND (i.part_code LIKE @q OR i.description LIKE @q OR i.model LIKE @q OR l.name LIKE @q)
+    AND (${searchClause})
     AND (@loc = 0 OR i.location_id = @loc)
     AND (@status = ''
          OR (@status = 'debt' AND i.quantity < 0)
@@ -34,19 +45,21 @@ export function parseStatus(v: unknown): StatusFilter {
 
 /** One row per inventory line, in the same order as the inventory sheet (model, then part code). Pass limit -1 for all rows. */
 export function lineRows(search: string, locationId: number, status: StatusFilter, limit: number, offset: number): LineRow[] {
+  const searchSql = buildPartSearch(search);
   return db
     .prepare(
       `SELECT i.id, i.model, i.part_code, i.description, i.location_id, l.name AS location, i.quantity, i.min_stock,
               i.lead_time_days, i.safety_stock, i.target_coverage_days
-       ${FROM_WHERE}
+       ${fromWhere(searchSql.clause)}
        ORDER BY i.model, i.part_code, l.name, i.id
        LIMIT @limit OFFSET @offset`
     )
-    .all({ q: `%${search}%`, loc: locationId, status, limit, offset }) as LineRow[];
+    .all({ ...searchSql.params, loc: locationId, status, limit, offset }) as LineRow[];
 }
 
 export function lineCount(search: string, locationId: number, status: StatusFilter): number {
-  const r = db.prepare(`SELECT COUNT(*) AS n ${FROM_WHERE}`).get({ q: `%${search}%`, loc: locationId, status }) as { n: number };
+  const searchSql = buildPartSearch(search);
+  const r = db.prepare(`SELECT COUNT(*) AS n ${fromWhere(searchSql.clause)}`).get({ ...searchSql.params, loc: locationId, status }) as { n: number };
   return r.n;
 }
 

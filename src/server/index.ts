@@ -9,7 +9,7 @@ import { authenticate, createSession, destroySession, requireRole } from './auth
 import { createManualBackup, listBackups, resolveBackup, startBackups } from './backup';
 import { db } from './db';
 import * as xl from './excel';
-import { lineCount, lineRows, parseStatus, summary } from './queries';
+import { buildPartSearch, lineCount, lineRows, parseStatus, summary } from './queries';
 import { applyMovement, countStock, countStockBatch, DebtWarning, logEdit, setQuantity, StockError, transferStock } from './stock';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -126,7 +126,9 @@ api.get('/summary', (_req, res) => {
 });
 
 api.get('/parts', (req, res) => {
-  const q = `%${str(req.query.search)}%`;
+  const search = str(req.query.search);
+  const matches = buildPartSearch(search, 'matched', 'matched_location');
+  const totals = buildPartSearch(search);
   const requestedLimit = int(req.query.limit);
   const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 500) : 500;
   const requestedOffset = int(req.query.offset);
@@ -135,18 +137,18 @@ api.get('/parts', (req, res) => {
       (SELECT group_concat(model,char(31)) FROM (SELECT DISTINCT NULLIF(TRIM(m.model),'') AS model FROM items m WHERE m.archived=0 AND m.part_code=i.part_code COLLATE NOCASE AND NULLIF(TRIM(m.model),'') IS NOT NULL ORDER BY model)) AS model,
       MIN(i.part_code) AS part_code,
       (SELECT group_concat(description,char(31)) FROM (SELECT DISTINCT NULLIF(TRIM(d.description),'') AS description FROM items d WHERE d.archived=0 AND d.part_code=i.part_code COLLATE NOCASE AND NULLIF(TRIM(d.description),'') IS NOT NULL ORDER BY description)) AS description,
-      SUM(i.quantity) AS total_quantity
+      SUM(i.quantity) AS total_quantity, SUM(i.min_stock) AS total_min_stock
     FROM items i
     WHERE i.archived=0 AND EXISTS (
       SELECT 1 FROM items matched LEFT JOIN locations matched_location ON matched_location.id=matched.location_id
       WHERE matched.archived=0 AND matched.part_code=i.part_code COLLATE NOCASE
-        AND (matched.part_code LIKE ? OR matched.model LIKE ? OR matched.description LIKE ? OR matched_location.name LIKE ?)
+        AND (${matches.clause})
     )
-    GROUP BY i.part_code COLLATE NOCASE ORDER BY part_code COLLATE NOCASE LIMIT ? OFFSET ?`).all(q,q,q,q,limit,offset);
+      GROUP BY i.part_code COLLATE NOCASE ORDER BY part_code COLLATE NOCASE LIMIT @limit OFFSET @offset`).all({ ...matches.params, limit, offset });
   const total = (db.prepare(`SELECT COUNT(DISTINCT i.part_code COLLATE NOCASE) AS n
     FROM items i LEFT JOIN locations l ON l.id=i.location_id
-    WHERE i.archived=0 AND (i.part_code LIKE ? OR i.model LIKE ? OR i.description LIKE ? OR l.name LIKE ?)`)
-    .get(q,q,q,q) as { n: number }).n;
+      WHERE i.archived=0 AND (${totals.clause})`)
+    .get(totals.params) as { n: number }).n;
   res.json({ rows, total });
 });
 
@@ -341,11 +343,12 @@ api.get('/stock', (req, res) => {
 });
 
 api.get('/item-search', (req, res) => {
-  const q = `%${str(req.query.q)}%`;
+  const matches = buildPartSearch(str(req.query.q));
+  const stockOutOnly = str(req.query.kind) === 'OUT';
   res.json(db.prepare(`SELECT i.id, i.model, i.part_code, i.description, i.quantity, l.name AS location
     FROM items i LEFT JOIN locations l ON l.id=i.location_id
-    WHERE i.archived=0 AND (i.part_code LIKE ? OR i.model LIKE ? OR i.description LIKE ? OR l.name LIKE ?)
-    ORDER BY i.model,i.part_code,l.name LIMIT 30`).all(q,q,q,q));
+    WHERE i.archived=0 AND (${matches.clause}) ${stockOutOnly ? 'AND i.quantity>0' : ''}
+    ORDER BY i.model,i.part_code,l.name LIMIT 100`).all(matches.params));
 });
 
 /* ---------- repair / service cases ---------- */
@@ -604,6 +607,10 @@ api.post('/transactions', requireRole('admin', 'staff'), (req, res) => {
     const itemId = int(line?.item_id), quantity = int(line?.quantity);
     checkItem(itemId);
     if (!Number.isInteger(quantity) || quantity <= 0) throw new StockError('Every quantity must be a whole number greater than zero.');
+    if (kind === 'OUT') {
+      const current = db.prepare('SELECT quantity FROM items WHERE id=? AND archived=0').get(itemId) as { quantity: number } | undefined;
+      if (!current || current.quantity <= 0) throw new StockError('Parts with no stock available cannot be issued.');
+    }
     return { itemId, quantity };
   });
   if (new Set(lines.map((line: { itemId: number }) => line.itemId)).size !== lines.length) throw new StockError('Each inventory line can only appear once in a transaction.');
@@ -626,8 +633,17 @@ api.post('/transactions', requireRole('admin', 'staff'), (req, res) => {
     if (value.length > 500) throw new StockError(`${label} must be 500 characters or fewer.`);
     return value;
   };
+  const selectedStockType = textField(b.stock_type, 'Transaction type');
+  let stockType = selectedStockType;
+  if (kind === 'OUT') {
+    if (!['RTV', 'JO', 'OTHERS'].includes(selectedStockType)) throw new StockError('Choose RTV, JO, or Others for Stock Out.');
+    if (selectedStockType === 'OTHERS') {
+      stockType = textField(b.stock_type_other, 'Other Stock Out type');
+      if (!stockType) throw new StockError('Specify the Stock Out type.');
+    }
+  }
   const data = {
-    stock_type: textField(b.stock_type, 'Transaction type'), supplier: textField(b.supplier, 'Supplier'),
+    stock_type: stockType, supplier: textField(b.supplier, 'Supplier'),
     ss_no: textField(b.ss_no, 'SS number'), packing_list: textField(b.packing_list, 'Packing list'),
     batch_no: textField(b.batch_no, 'Batch number'), requisition_no: textField(b.requisition_no, 'Requisition number'),
     document_ref: textField(b.document_ref, 'RT/JO/INV/PS reference'), technician: textField(b.technician, 'Technician'),
@@ -650,7 +666,7 @@ api.post('/transactions', requireRole('admin', 'staff'), (req, res) => {
       .run({ kind, ...data, serviceJobId, purchaseOrderId, userId: req.user!.id });
     const id = Number(created.lastInsertRowid);
     const transactionNo = `${kind === 'IN' ? 'STIN' : 'STOUT'}-${new Date().getFullYear()}-${String(id).padStart(6, '0')}`;
-    const requisitionNo = kind === 'OUT' ? data.requisition_no || linkedJobNo || `REQ-${new Date().getFullYear()}-${String(id).padStart(6,'0')}` : data.requisition_no;
+    const requisitionNo = kind === 'OUT' ? '' : data.requisition_no;
     db.prepare('UPDATE stock_transactions SET transaction_no=?,requisition_no=? WHERE id=?').run(transactionNo,requisitionNo,id);
     const balances: number[] = [];
     const changes: {itemId:number;previousQuantity:number;newQuantity:number;change:number}[] = [];
@@ -658,7 +674,7 @@ api.post('/transactions', requireRole('admin', 'staff'), (req, res) => {
       const previousQuantity = (db.prepare('SELECT quantity FROM items WHERE id=?').get(line.itemId) as {quantity:number}).quantity;
       const newQuantity = applyMovement({
         itemId: line.itemId, change: kind === 'OUT' ? -line.quantity : line.quantity,
-        type: kind as 'IN' | 'OUT', reference: kind === 'IN' ? [data.stock_type, data.supplier, data.ss_no && `SS No ${data.ss_no}`, data.packing_list && `Packing list ${data.packing_list}`].filter(Boolean).join(' / ') : [requisitionNo && `Requisition ${requisitionNo}`, data.packing_list && `Packing list ${data.packing_list}`, data.document_ref].filter(Boolean).join(' / '),
+        type: kind as 'IN' | 'OUT', reference: kind === 'IN' ? [data.stock_type, data.supplier, data.ss_no && `SS No ${data.ss_no}`, data.packing_list && `Packing list ${data.packing_list}`].filter(Boolean).join(' / ') : data.stock_type,
         destination: kind === 'OUT' ? data.batch_no : '', technician: data.technician, note: data.note,
         transactionId: id, userId: req.user!.id, allowDebt,
       });
@@ -780,16 +796,16 @@ api.get('/transactions', (req, res) => {
     SELECT r.*,u.username AS user,
       CASE WHEN r.key LIKE 'M:%' THEN r.legacy_reference
            WHEN r.type='IN' THEN TRIM(r.stock_type||' '||r.supplier||' '||r.ss_no||' '||r.packing_list)
-           ELSE TRIM(r.requisition_no||' '||r.packing_list||' '||r.document_ref||' '||r.batch_no) END AS reference
+           ELSE TRIM(r.stock_type||' '||r.requisition_no||' '||r.packing_list||' '||r.document_ref||' '||r.batch_no) END AS reference
     FROM register r LEFT JOIN users u ON u.id=r.user_id
-    WHERE (r.transaction_no LIKE @q OR r.type LIKE @q OR r.part_codes LIKE @q OR r.technician LIKE @q OR r.supplier LIKE @q OR r.requisition_no LIKE @q OR r.packing_list LIKE @q OR r.batch_no LIKE @q OR r.document_ref LIKE @q OR r.legacy_reference LIKE @q OR r.repair_job_no LIKE @q)
+    WHERE (r.transaction_no LIKE @q OR r.type LIKE @q OR r.stock_type LIKE @q OR r.part_codes LIKE @q OR r.technician LIKE @q OR r.supplier LIKE @q OR r.requisition_no LIKE @q OR r.packing_list LIKE @q OR r.batch_no LIKE @q OR r.document_ref LIKE @q OR r.legacy_reference LIKE @q OR r.repair_job_no LIKE @q)
       AND (@from='' OR date(r.created_at)>=date(@from)) AND (@to='' OR date(r.created_at)<=date(@to))
     ORDER BY r.created_at DESC,r.key DESC LIMIT @limit OFFSET @offset`).all({ q, from, to, limit, offset });
   const total = (db.prepare(`WITH register AS (
       SELECT 'T:'||t.id AS key,t.transaction_no,t.kind AS type,t.created_at,t.stock_type,t.supplier,t.requisition_no,t.technician,COALESCE(GROUP_CONCAT(DISTINCT i.part_code),'') AS part_codes,t.packing_list,t.batch_no,t.document_ref,'' AS legacy_reference,j.job_no AS repair_job_no
       FROM stock_transactions t LEFT JOIN movements m ON m.transaction_id=t.id LEFT JOIN items i ON i.id=m.item_id LEFT JOIN service_jobs j ON j.id=t.service_job_id GROUP BY t.id
       UNION ALL SELECT 'M:'||m.id,'LEGACY-'||m.id,m.type,m.created_at,'','','',m.technician,i.part_code,'',m.destination,'',m.reference,'' FROM movements m JOIN items i ON i.id=m.item_id WHERE m.transaction_id IS NULL
-    ) SELECT COUNT(*) AS n FROM register r WHERE (r.transaction_no LIKE @q OR r.type LIKE @q OR r.part_codes LIKE @q OR r.technician LIKE @q OR r.supplier LIKE @q OR r.requisition_no LIKE @q OR r.packing_list LIKE @q OR r.batch_no LIKE @q OR r.document_ref LIKE @q OR r.legacy_reference LIKE @q OR r.repair_job_no LIKE @q)
+    ) SELECT COUNT(*) AS n FROM register r WHERE (r.transaction_no LIKE @q OR r.type LIKE @q OR r.stock_type LIKE @q OR r.part_codes LIKE @q OR r.technician LIKE @q OR r.supplier LIKE @q OR r.requisition_no LIKE @q OR r.packing_list LIKE @q OR r.batch_no LIKE @q OR r.document_ref LIKE @q OR r.legacy_reference LIKE @q OR r.repair_job_no LIKE @q)
       AND (@from='' OR date(r.created_at)>=date(@from)) AND (@to='' OR date(r.created_at)<=date(@to))`).get({ q, from, to }) as { n: number }).n;
   res.json({ rows, total });
 });

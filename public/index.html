@@ -54,7 +54,7 @@
     <div class="page-intro"><h1>Stock line details</h1><p>View quantity by location and manage minimum stock, restock settings, or line history.</p></div>
     <div id="summary" class="chips"></div>
     <div class="bar">
-      <input id="search" type="search" placeholder="Search model, part code, description or location">
+      <input id="search" type="search" placeholder="Search part code, model, description or location; separate codes with commas">
       <select id="locFilter" aria-label="Location"></select>
       <select id="statusFilter" aria-label="Show">
         <option value="">All lines</option>
@@ -77,7 +77,7 @@
 
   <section id="tab-parts" class="page parts-page">
     <div class="page-intro"><h1>Parts</h1><p>Search for a part to see its total stock. Select a part row to view quantities by location.</p></div>
-    <div class="bar"><input id="partsSearch" type="search" placeholder="Search model, part code or description"><span class="grow"></span><button id="stockInBtn" class="edit-only">Receive stock · Stock In</button><button id="stockOutBtn" class="edit-only ghost">Issue stock · Stock Out</button><button id="partsCountBtn" class="edit-only ghost">Physical count</button><button id="addItemBtnParts" class="edit-only ghost">Add part</button><button id="addLocBtnParts" class="admin-only ghost">Add location</button></div>
+    <div class="bar"><input id="partsSearch" type="search" placeholder="Search part code, model, description or location; separate codes with commas"><span class="grow"></span><button id="stockInBtn" class="edit-only">Receive stock · Stock In</button><button id="stockOutBtn" class="edit-only ghost">Issue stock · Stock Out</button><button id="partsCountBtn" class="edit-only ghost">Physical count</button><button id="addItemBtnParts" class="edit-only ghost">Add part</button><button id="addLocBtnParts" class="admin-only ghost">Add location</button></div>
     <div id="partsSummary" class="chips"></div>
     <div class="scroll parts-scroll"><table class="inventory-table parts-table"><thead><tr><th></th><th>Part code</th><th>Model(s)</th><th>Description(s)</th><th class="num">Total quantity</th></tr></thead><tbody id="partsBody"></tbody></table></div>
     <div class="pager" id="partsPager"></div>
@@ -146,7 +146,7 @@
     </div>
     <div class="scroll">
       <table>
-        <thead><tr><th>Date</th><th>Stock In / Out No.</th><th>Type</th><th class="num">Item lines</th><th class="num">Units</th><th>Reference / technician</th><th>Entered by</th></tr></thead>
+        <thead><tr><th>Date</th><th>Stock In / Out No.</th><th>Type</th><th class="num">Item lines</th><th class="num">Units</th><th>Details / technician</th><th>Entered by</th></tr></thead>
         <tbody id="moveBody"></tbody>
       </table>
     </div>

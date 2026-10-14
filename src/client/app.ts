@@ -11,7 +11,7 @@ interface MoveRow {
   key: string; created_at: string; transaction_no: string; type: string; line_count: number; units: number;
   reference: string; technician: string; repair_job_no: string | null; user: string | null;
 }
-interface PartRow { id: number; model: string | null; part_code: string; description: string | null; total_quantity: number }
+interface PartRow { id: number; model: string | null; part_code: string; description: string | null; total_quantity: number; total_min_stock: number }
 interface RepairJob { id: number; job_no: string; appliance_model: string; serial_no: string; technician: string; status: 'OPEN' | 'COMPLETED'; opened_at: string; closed_at: string | null; repair_outcome: string; part_lines: number; qty_issued: number }
 interface Summary { lines: number; units: number; debt_lines: number; debt_units: number }
 interface ImportResult {
@@ -264,7 +264,12 @@ async function loadParts(page: number = partsPage) {
   if (page > pages) return loadParts(pages);
   renderPager($('partsPager'), page, data.total, (nextPage) => void loadParts(nextPage), PARTS_PAGE_SIZE);
   const values = (value: string | null) => value ? value.split('\u001f').filter(Boolean) : [];
-  $('partsBody').innerHTML = data.rows.map((r) => `<tr class="part-row"><td><button class="small ghost expand-part" data-part-id="${r.id}" aria-expanded="false" aria-label="Show locations for ${esc(r.part_code)}">＋</button></td><td class="code">${esc(r.part_code)}</td><td><div class="part-model-list">${values(r.model).map((model) => `<span class="part-model-tag">${esc(model)}</span>`).join('') || '<span class="hint">No model</span>'}</div></td><td><div class="part-description-list">${values(r.description).map((description) => `<span>${esc(description)}</span>`).join('') || '<span class="hint">No description</span>'}</div></td><td class="num">${num(r.total_quantity)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No matching parts.</td></tr>';
+  $('partsBody').innerHTML = data.rows.map((r) => {
+    const debt = r.total_quantity < 0;
+    const low = !debt && r.total_min_stock > 0 && r.total_quantity <= r.total_min_stock;
+    const qty = `${num(r.total_quantity)}${low ? ` (min ${num(r.total_min_stock)})` : ''}`;
+    return `<tr class="part-row ${debt ? 'debt' : low ? 'low' : ''}"><td><button class="small ghost expand-part" data-part-id="${r.id}" aria-expanded="false" aria-label="Show locations for ${esc(r.part_code)}">＋</button></td><td class="code">${esc(r.part_code)}</td><td><div class="part-model-list">${values(r.model).map((model) => `<span class="part-model-tag">${esc(model)}</span>`).join('') || '<span class="hint">No model</span>'}</div></td><td><div class="part-description-list">${values(r.description).map((description) => `<span>${esc(description)}</span>`).join('') || '<span class="hint">No description</span>'}</div></td><td class="num">${qty}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="empty">No matching parts.</td></tr>';
 }
 let partsTimer: number | undefined;
 $('partsSearch').addEventListener('input', () => { clearTimeout(partsTimer); partsTimer = window.setTimeout(() => void loadParts(1), 250); });
@@ -617,7 +622,7 @@ async function loadStock(page: number = stockPage): Promise<void> {
       const debt = r.quantity < 0;
       const low = !debt && r.min_stock > 0 && r.quantity <= r.min_stock;
       const btn = (act: string, label: string) => `<button class="small ghost" data-act="${act}" data-i="${i}">${label}</button>`;
-      const actions = (canEdit() ? btn('IN', 'Stock In') + btn('OUT', 'Stock Out') : '') + btn('MORE', 'More');
+      const actions = (canEdit() ? btn('IN', 'Stock In') + (r.quantity > 0 ? btn('OUT', 'Stock Out') : '') : '') + btn('MORE', 'More');
       const qty = debt ? num(r.quantity) : `${num(r.quantity)}${low ? ` (min ${num(r.min_stock)})` : ''}`;
       return `<tr class="${debt ? 'debt' : low ? 'low' : ''}"><td class="code">${esc(r.part_code)}</td><td>${esc(r.model)}</td><td>${esc(r.description)}</td><td>${esc(r.location ?? 'No location')}</td><td class="num">${qty}</td><td class="actions">${actions}</td></tr>`;
     })
@@ -722,28 +727,28 @@ function openMore(r: StockRow) {
 async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchItem | (SearchItem & {receive_quantity?:number})) | (StockRow | SearchItem | (SearchItem & {receive_quantity?:number}))[], repairJobId?: number, purchaseOrder?:{id:number;orderNo:string;supplier:string}) {
   const dlg = $<HTMLDialogElement>('dlg'), form = $<HTMLFormElement>('dlgForm');
   const initialItems=initial?(Array.isArray(initial)?initial:[initial]):[];
-  const basket: { item: SearchItem; quantity: number }[] = initialItems.map((item:any)=>({item,quantity:Number(item.receive_quantity)||1}));
+  const basket: { item: SearchItem; quantity: number }[] = initialItems.map((item:any)=>({item,quantity:item.receive_quantity !== undefined ? Number(item.receive_quantity) : kind === 'OUT' ? 0 : 1}));
   let openJobs: RepairJob[] = [];
   if (kind === 'OUT') {
     try { openJobs = await api<RepairJob[]>('/repairs?status=OPEN'); } catch { /* Stock Out remains available if repair lookup fails. */ }
   }
   const fields = kind === 'IN'
-    ? `${purchaseOrder?`<input type="hidden" name="purchase_order_id" value="${purchaseOrder.id}"><label>Purchase order<input value="${esc(purchaseOrder.orderNo)}" disabled></label>`:''}<label>Transaction type<select name="stock_type"><option>Purchase</option><option>Shipment</option><option>Knock Down</option><option>Total Knock Down</option></select></label>
-       <label>Supplier<input name="supplier" value="${esc(purchaseOrder?.supplier||'')}"><small class="field-hint">Company or person the stock came from.</small></label><label>SS No<input name="ss_no"></label><label>Packing list<input name="packing_list"></label>`
+    ? `${purchaseOrder?`<input type="hidden" name="purchase_order_id" value="${purchaseOrder.id}"><label>Purchase order<input value="${esc(purchaseOrder.orderNo)}" disabled></label>`:''}<label>Transaction type<select name="stock_type" id="txInType"><option>Purchase</option><option>Shipment</option><option>Knock Down</option><option>Total Knock Down</option></select></label>
+       <label>Supplier<input name="supplier" value="${esc(purchaseOrder?.supplier||'')}"><small class="field-hint">Enabled for shipments. Other supplier details can be entered for linked purchase orders.</small></label><label>SS No<input name="ss_no"></label><label>Packing list<input name="packing_list"></label>`
     : `<label>Repair job (optional)<select name="service_job_id" id="txRepairJob"><option value="">No repair job</option>${openJobs.map((job) => `<option value="${job.id}" data-technician="${esc(job.technician)}"${job.id === repairJobId ? ' selected' : ''}>${esc(job.job_no)} · ${esc(job.appliance_model)}${job.serial_no ? ` · ${esc(job.serial_no)}` : ''}</option>`).join('')}</select><small class="field-hint">Link the issued parts to an open repair job.</small></label>
-       <label>Technician name<input name="technician"><small class="field-hint">Selecting a repair job fills in its technician when available.</small></label><label>Batch no.<input name="batch_no"></label>
-       <label>Requisition number<input name="requisition_no" placeholder="Generated on save if blank"><small class="field-hint">Leave blank to generate one automatically.</small></label><label>RT/JO/INV/PS<input name="document_ref"><small class="field-hint">Enter the related reference exactly as it appears on your document.</small></label><label>Packing list<input name="packing_list"></label>`;
+       <label>Stock Out type<select name="stock_type" id="txOutType" required><option value="">Choose type</option><option value="RTV">RTV</option><option value="JO">JO</option><option value="OTHERS">Others</option></select></label><label id="txOtherTypeField" hidden>Specify other type<input name="stock_type_other" maxlength="120"></label>
+       <label>Technician name<input name="technician"><small class="field-hint">Selecting a repair job fills in its technician when available.</small></label><label>Batch no.<input name="batch_no"></label><label>Packing list<input name="packing_list"></label>`;
   const action = kind === 'IN' ? 'Stock In' : 'Stock Out';
   form.innerHTML = `<header class="tx-heading ${kind === 'IN' ? 'tx-heading-in' : 'tx-heading-out'}"><div><span class="tx-kicker">INVENTORY TRANSACTION</span><h3>${action}</h3><p>${kind === 'IN' ? 'Add stock received from a supplier or shipment.' : 'Record parts issued to a technician, job, or location.'}</p></div><span class="tx-kind">${kind}</span></header>
     <section class="tx-section" id="txSelectSection"><div class="tx-section-title"><span>1</span><div><strong>Select parts</strong><small>Search, then add each part and quantity. You can include parts from different locations.</small></div></div>
-      <label class="tx-search">Search the parts list<input id="txSearch" placeholder="Model, part code, description or location" autocomplete="off"></label>
+      <label class="tx-search">Search the parts list<input id="txSearch" placeholder="Part code, model, description or location; separate codes with commas" autocomplete="off"></label>
       <div id="txMatches" class="tx-matches"></div><div id="txBasket" class="tx-basket"></div><div id="txBasketSummary" class="tx-basket-summary"></div>
     </section>
-    <section class="tx-section" id="txDetailsSection"><div class="tx-section-title"><span>2</span><div><strong>Transaction details</strong><small>Reference fields accept letters, numbers and symbols.</small></div></div><div class="transaction-fields">${fields}</div>${kind === 'OUT' ? '<p class="hint">Leave requisition number blank to generate one automatically. Linking a repair job uses its job number as the requisition reference.</p>' : ''}</section>
+    <section class="tx-section" id="txDetailsSection"><div class="tx-section-title"><span>2</span><div><strong>Transaction details</strong><small>${kind === 'IN' ? 'Shipment enables Supplier. The Stock In number is generated automatically.' : 'The Stock Out number is generated automatically; no RTV or JO reference number is needed.'}</small></div></div><div class="transaction-fields">${fields}</div></section>
     <label class="tx-note" id="txNoteLabel">Note (optional)<input name="note" placeholder="Add context for this transaction"></label><section id="txReview" class="tx-review" hidden></section><p class="err" id="dlgErr"></p>
     <div class="row tx-actions"><button type="button" class="ghost" id="dlgCancel">Cancel</button><button type="button" class="ghost" id="txEditReview" hidden>Edit transaction</button><button class="tx-submit">Review ${action}</button></div>`;
   const redraw = () => {
-    $('txBasket').innerHTML = basket.length ? `<table><thead><tr><th>Part</th><th class="num">On hand</th><th>Quantity ${kind === 'OUT' ? 'to issue' : 'to receive'}</th><th></th></tr></thead><tbody>${basket.map((entry, i) => `<tr><td><strong>${esc([entry.item.part_code, entry.item.model].filter(Boolean).join(' · '))}</strong><small class="tx-part-desc">${esc(entry.item.description)}</small><span class="location-pill">${esc(entry.item.location ?? 'No location')}</span></td><td class="num">${num(entry.item.quantity)}</td><td><input aria-label="Quantity for ${esc(entry.item.part_code)}" type="number" min="1" step="1" data-qty="${i}" value="${entry.quantity}" required></td><td><button type="button" class="small ghost" data-remove="${i}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<div class="tx-empty"><strong>No parts added yet</strong><span>Search above to add parts to this transaction.</span></div>';
+    $('txBasket').innerHTML = basket.length ? `<table><thead><tr><th>Part</th><th class="num">On hand</th><th>Quantity ${kind === 'OUT' ? 'to issue' : 'to receive'}</th><th></th></tr></thead><tbody>${basket.map((entry, i) => `<tr><td><strong>${esc([entry.item.part_code, entry.item.model].filter(Boolean).join(' · '))}</strong><small class="tx-part-desc">${esc(entry.item.description)}</small><span class="location-pill">${esc(entry.item.location ?? 'No location')}</span></td><td class="num">${num(entry.item.quantity)}</td><td><input aria-label="Quantity for ${esc(entry.item.part_code)}" type="number" min="${kind === 'OUT' ? 0 : 1}" step="1" data-qty="${i}" value="${entry.quantity}" required></td><td><button type="button" class="small ghost" data-remove="${i}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<div class="tx-empty"><strong>No parts added yet</strong><span>Search above to add parts to this transaction.</span></div>';
     const totalQuantity = basket.reduce((total, entry) => total + (Number.isFinite(entry.quantity) ? entry.quantity : 0), 0);
     $('txBasketSummary').innerHTML = basket.length ? `<span>${num(basket.length)} ${basket.length === 1 ? 'part line' : 'part lines'} selected</span><strong>${num(totalQuantity)} total units</strong>` : '';
   };
@@ -760,20 +765,59 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
     repairSelect.addEventListener('change', syncTechnician);
     if (repairJobId) syncTechnician();
   }
+  const inType = form.querySelector<HTMLSelectElement>('#txInType');
+  if (inType) {
+    const supplier = form.elements.namedItem('supplier') as HTMLInputElement;
+    const ssNo = form.elements.namedItem('ss_no') as HTMLInputElement;
+    const packingList = form.elements.namedItem('packing_list') as HTMLInputElement;
+    const setDisabled = (field: HTMLInputElement, disabled: boolean) => {
+      field.disabled = disabled;
+      field.closest('label')?.classList.toggle('field-disabled', disabled);
+    };
+    const syncShipmentFields = () => {
+      const shipment = inType.value === 'Shipment';
+      setDisabled(supplier, !shipment && !purchaseOrder);
+      setDisabled(ssNo, shipment);
+      setDisabled(packingList, shipment);
+    };
+    inType.addEventListener('change', syncShipmentFields);
+    syncShipmentFields();
+  }
+  const outType = form.querySelector<HTMLSelectElement>('#txOutType');
+  const otherType = form.querySelector<HTMLInputElement>('[name="stock_type_other"]');
+  const otherTypeLabel = $('txOtherTypeField');
+  const syncOtherType = () => {
+    if (!outType || !otherType) return;
+    const enabled = outType.value === 'OTHERS';
+    otherTypeLabel.hidden = !enabled;
+    otherType.required = enabled;
+    otherType.disabled = !enabled;
+    otherTypeLabel.classList.toggle('field-disabled', !enabled);
+  };
+  outType?.addEventListener('change', syncOtherType);
+  syncOtherType();
+  const renderItemMatches = (rows: SearchItem[], message: string) => {
+    $('txMatches').innerHTML = `<div class="tx-results-scroll"><table class="tx-item-table"><thead><tr><th>Part code</th><th>Model</th><th>Description</th><th>Location</th><th class="num">On hand</th><th></th></tr></thead><tbody>${rows.length ? rows.map((item, i) => `<tr><td class="code">${esc(item.part_code)}</td><td>${esc(item.model)}</td><td>${esc(item.description)}</td><td>${esc(item.location || 'No location')}</td><td class="num">${num(item.quantity)}</td><td><button type="button" class="small ghost" data-match-index="${i}">Add</button></td></tr>`).join('') : `<tr><td colspan="6" class="empty">${esc(message)}</td></tr>`}</tbody></table></div>`;
+    $('txMatches').querySelectorAll<HTMLButtonElement>('[data-match-index]').forEach((button) => button.onclick = () => {
+      const item = rows[Number(button.dataset.matchIndex)];
+      if (basket.some((entry) => entry.item.id === item.id)) { $('dlgErr').textContent = 'That exact part and location is already in the list.'; return; }
+      $('dlgErr').textContent = '';
+      basket.push({ item, quantity: kind === 'OUT' ? 0 : 1 });
+      redraw();
+    });
+  };
+  renderItemMatches([], 'Search to see matching stock lines. Separate multiple codes with commas.');
+  let searchVersion = 0;
   search.oninput = () => {
     clearTimeout(timer);
     timer = window.setTimeout(async () => {
       const q = search.value.trim();
-      if (q.length < 2) { $('txMatches').innerHTML = ''; return; }
+      const version = ++searchVersion;
+      if (!q.split(',').map((term) => term.trim()).filter(Boolean).length) { renderItemMatches([], 'Search to see matching stock lines. Separate multiple codes with commas.'); return; }
       try {
-        const rows = await api<SearchItem[]>(`/item-search?q=${encodeURIComponent(q)}`);
-        $('txMatches').innerHTML = rows.map((x) => `<button type="button" class="ghost tx-match" data-item="${x.id}">${esc([x.part_code, x.model, x.description, x.location ?? 'No location'].filter(Boolean).join(' · '))} <small>(on hand ${num(x.quantity)})</small></button>`).join('') || '<span class="hint">No matching lines.</span>';
-        $('txMatches').querySelectorAll<HTMLButtonElement>('[data-item]').forEach((button, i) => button.onclick = () => {
-          const item = rows[i];
-          if (basket.some((entry) => entry.item.id === item.id)) { $('dlgErr').textContent = 'That exact part and location is already in the list.'; return; }
-          $('dlgErr').textContent = '';
-          basket.push({ item, quantity: 1 }); redraw();
-        });
+        const rows = await api<SearchItem[]>(`/item-search?q=${encodeURIComponent(q)}&kind=${kind}`);
+        if (version !== searchVersion) return;
+        renderItemMatches(rows, kind === 'OUT' ? 'No matching parts with stock available.' : 'No matching stock lines.');
       } catch (error) { $('dlgErr').textContent = (error as Error).message; }
     }, 220);
   };
@@ -804,8 +848,13 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
     event.preventDefault();
     if (!basket.length) { $('dlgErr').textContent = 'Add at least one item line.'; return; }
     if (!reviewMode) {
+      const invalidQuantity = basket.find((entry) => !Number.isInteger(entry.quantity) || entry.quantity <= 0);
+      if (invalidQuantity) { $('dlgErr').textContent = `Enter a whole quantity greater than zero for ${invalidQuantity.item.part_code}.`; return; }
+      if (kind === 'OUT' && basket.some((entry) => entry.item.quantity <= 0)) { $('dlgErr').textContent = 'Parts with no stock available cannot be issued.'; return; }
+      if (kind === 'OUT' && !outType?.value) { $('dlgErr').textContent = 'Choose RTV, JO, or Others for Stock Out.'; return; }
+      if (kind === 'OUT' && outType?.value === 'OTHERS' && !otherType?.value.trim()) { $('dlgErr').textContent = 'Specify the Stock Out type.'; return; }
       const fields = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[name]'))
-        .filter((field) => field.name !== 'txSearch' && field.name !== 'purchase_order_id' && field.value.trim())
+        .filter((field) => field.name !== 'txSearch' && field.name !== 'purchase_order_id' && !field.disabled && field.value.trim())
         .map((field) => {
           const label = field.closest('label');
           const title = Array.from(label?.childNodes ?? []).find((node) => node.nodeType === Node.TEXT_NODE)?.textContent?.trim() || field.name;
@@ -814,11 +863,8 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
         }).join('');
       const lineRows = basket.map(({item,quantity}) => `<tr><td>${esc([item.part_code,item.model].filter(Boolean).join(' · '))}<small>${esc(item.description)} · ${esc(item.location || 'No location')}</small></td><td class="num">${num(item.quantity)}</td><td class="num">${num(quantity)}</td></tr>`).join('');
       const lineTotal = basket.reduce((sum, entry) => sum + entry.quantity, 0);
-      const requisitionElement = form.elements.namedItem('requisition_no') as HTMLInputElement | null;
-      const linkedJobName = form.querySelector<HTMLSelectElement>('#txRepairJob')?.selectedOptions[0]?.textContent?.trim();
-      const generatedRequisition = kind === 'OUT' && !requisitionElement?.value.trim() && `<div><dt>Requisition number</dt><dd>${linkedJobName && !linkedJobName.startsWith('No repair job') ? `Uses ${esc(linkedJobName)} as the reference` : 'Generated automatically after saving'}</dd></div>`;
       const systemFields = `<div><dt>${kind === 'IN' ? 'Stock In number' : 'Stock Out number'}</dt><dd>Generated automatically after saving</dd></div>${purchaseOrder?`<div><dt>Purchase order</dt><dd>${esc(purchaseOrder.orderNo)}</dd></div>`:''}`;
-      $('txReview').innerHTML = `<div class="tx-review-title"><div><span class="tx-kicker">CHECK BEFORE SAVING</span><h3>Review ${action.toLowerCase()}</h3><p>${num(basket.length)} ${basket.length === 1 ? 'part line' : 'part lines'} · ${num(lineTotal)} total units</p></div><span class="tx-review-mark">✓</span></div><div class="tx-basket"><table><thead><tr><th>Part and location</th><th class="num">On hand</th><th class="num">${kind === 'IN' ? 'To receive' : 'To issue'}</th></tr></thead><tbody>${lineRows}</tbody></table></div><dl class="receipt-meta">${systemFields}${fields}${generatedRequisition || ''}</dl><p class="hint">Check the parts, quantities, and reference details. Select Edit transaction to make changes.</p>`;
+      $('txReview').innerHTML = `<div class="tx-review-title"><div><span class="tx-kicker">CHECK BEFORE SAVING</span><h3>Review ${action.toLowerCase()}</h3><p>${num(basket.length)} ${basket.length === 1 ? 'part line' : 'part lines'} · ${num(lineTotal)} total units</p></div><span class="tx-review-mark">✓</span></div><div class="tx-basket"><table><thead><tr><th>Part and location</th><th class="num">On hand</th><th class="num">${kind === 'IN' ? 'To receive' : 'To issue'}</th></tr></thead><tbody>${lineRows}</tbody></table></div><dl class="receipt-meta">${systemFields}${fields}</dl><p class="hint">Check the parts, quantities, and transaction details. Select Edit transaction to make changes.</p>`;
       $('txReview').hidden = false;
       $('txSelectSection').hidden = true;
       $('txDetailsSection').hidden = true;
@@ -835,13 +881,13 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
     };
     try {
       const result = await send(false) as { transactionId:number; transactionNo: string; requisitionNo: string; changes:{previousQuantity:number;newQuantity:number}[] };
-      dlg.close(); toast(kind === 'IN' ? `Saved Stock In No. ${result.transactionNo}.` : `Saved Stock Out No. ${result.transactionNo} · Requisition ${result.requisitionNo}.`); await Promise.all([loadSummary(), loadStock(), loadParts()]);
+      dlg.close(); toast(kind === 'IN' ? `Saved Stock In No. ${result.transactionNo}.` : `Saved Stock Out No. ${result.transactionNo}.`); await Promise.all([loadSummary(), loadStock(), loadParts()]);
       if(purchaseOrder) await loadRestockOrders();
       await showReceipt(`T:${result.transactionId}`);
     } catch (error) {
       const err = error as ApiError;
       if (err.debt && confirm(`${err.message}\n\nRecord the shortage as ${DEBT.toLowerCase()}?`)) {
-        try { const result = await send(true) as { transactionId:number; transactionNo: string; requisitionNo: string; changes:{previousQuantity:number;newQuantity:number}[] }; dlg.close(); toast(kind === 'IN' ? `Saved Stock In No. ${result.transactionNo}.` : `Saved Stock Out No. ${result.transactionNo} · Requisition ${result.requisitionNo}.`); await Promise.all([loadSummary(), loadStock(), loadParts()]); if(purchaseOrder) await loadRestockOrders(); await showReceipt(`T:${result.transactionId}`); }
+        try { const result = await send(true) as { transactionId:number; transactionNo: string; requisitionNo: string; changes:{previousQuantity:number;newQuantity:number}[] }; dlg.close(); toast(kind === 'IN' ? `Saved Stock In No. ${result.transactionNo}.` : `Saved Stock Out No. ${result.transactionNo}.`); await Promise.all([loadSummary(), loadStock(), loadParts()]); if(purchaseOrder) await loadRestockOrders(); await showReceipt(`T:${result.transactionId}`); }
         catch (retryError) { $('dlgErr').textContent = (retryError as Error).message; }
       } else $('dlgErr').textContent = err.message;
     }
@@ -971,13 +1017,13 @@ async function showReceipt(key: string) {
     const fields = ([
       ['Transaction type', t.stock_type], ['Supplier', t.supplier], ['SS No', t.ss_no],
       ['Packing list', t.packing_list], ['Batch no.', t.batch_no], ['Requisition number', t.requisition_no],
-      ['RT/JO/INV/PS', t.document_ref], ['Repair job', t.repair_job_no], ['Purchase order',t.purchase_order_no], ['Technician', t.technician], ['Entered by', t.created_by_name], ['Note', t.note],
+      ['RT/JO/INV/PS', t.document_ref], ['Repair job', t.repair_job_no], ['Purchase order',t.purchase_order_no], ['Technician', t.technician], ['Note', t.note],
     ] as [string, unknown][]).filter(([, value]) => Boolean(value));
     const dlg = $<HTMLDialogElement>('dlg'), form = $<HTMLFormElement>('dlgForm');
     form.innerHTML = `<div id="receiptContent" class="receipt"><h2>IMARFLEX SPARE PARTS INVENTORY</h2><h3>${esc(t.kind === 'IN' ? 'STOCK IN RECEIPT' : t.kind === 'OUT' ? 'STOCK OUT RECEIPT' : 'TRANSACTION RECEIPT')}</h3>
       <dl class="receipt-meta"><div><dt>${esc(t.kind === 'IN' ? 'Stock In No.' : t.kind === 'OUT' ? 'Stock Out No.' : 'Record No.')}</dt><dd>${esc(t.transaction_no)}</dd></div><div><dt>Date</dt><dd>${esc(t.created_at)}</dd></div>${fields.map(([label,value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>
       <table><thead><tr><th>Part code</th><th>Model</th><th>Description</th><th>Location</th><th class="num">Previous</th><th class="num">Change</th><th class="num">New total</th></tr></thead><tbody>${receipt.lines.map((line) => `<tr><td>${esc(line.part_code)}</td><td>${esc(line.model)}</td><td>${esc(line.description)}</td><td>${esc(line.location ?? 'No location')}</td><td class="num">${num(line.previous_quantity)}</td><td class="num ${line.qty_change < 0 ? 'neg' : 'pos'}">${line.qty_change > 0 ? '+' : ''}${num(line.qty_change)}</td><td class="num"><strong>${num(line.new_quantity)}</strong></td></tr>`).join('')}</tbody></table>
-      <p class="receipt-sign">Prepared by: ${esc(t.created_by_name ?? '')} <span>Received / issued by: __________________</span></p></div>
+      <div class="receipt-sign"><div><span class="receipt-sign-name">${esc(t.created_by_name ?? '')}</span><strong>Prepared by</strong></div><div><span class="receipt-sign-name">Marie Tes Onglao</span><strong>Noted by</strong></div></div></div>
       <p class="err" id="dlgErr"></p><div class="row"><button type="button" class="ghost" id="receiptPrint">Print receipt</button><button type="button" class="ghost" id="dlgCancel">Close</button></div>`;
     form.onsubmit = (e) => e.preventDefault();
     $('dlgCancel').onclick = () => dlg.close();
