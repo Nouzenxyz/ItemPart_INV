@@ -806,21 +806,22 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
       redraw();
     });
   };
-  renderItemMatches([], 'Search to see matching stock lines. Separate multiple codes with commas.');
   let searchVersion = 0;
+  const loadItemMatches = async () => {
+    clearTimeout(timer);
+    const q = search.value.trim();
+    const version = ++searchVersion;
+    try {
+      const rows = await api<SearchItem[]>(`/item-search?q=${encodeURIComponent(q)}&kind=${kind}`);
+      if (version !== searchVersion) return;
+      renderItemMatches(rows, kind === 'OUT' ? 'No matching parts with stock available.' : 'No inventory items found.');
+    } catch (error) { $('dlgErr').textContent = (error as Error).message; }
+  };
   search.oninput = () => {
     clearTimeout(timer);
-    timer = window.setTimeout(async () => {
-      const q = search.value.trim();
-      const version = ++searchVersion;
-      if (!q.split(',').map((term) => term.trim()).filter(Boolean).length) { renderItemMatches([], 'Search to see matching stock lines. Separate multiple codes with commas.'); return; }
-      try {
-        const rows = await api<SearchItem[]>(`/item-search?q=${encodeURIComponent(q)}&kind=${kind}`);
-        if (version !== searchVersion) return;
-        renderItemMatches(rows, kind === 'OUT' ? 'No matching parts with stock available.' : 'No matching stock lines.');
-      } catch (error) { $('dlgErr').textContent = (error as Error).message; }
-    }, 220);
+    timer = window.setTimeout(() => { void loadItemMatches(); }, 220);
   };
+  void loadItemMatches();
   $('txBasket').onclick = (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-remove]');
     if (button) { basket.splice(Number(button.dataset.remove), 1); redraw(); }
