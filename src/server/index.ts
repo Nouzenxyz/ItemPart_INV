@@ -597,6 +597,72 @@ api.delete('/items/:id', requireRole('admin'), (req, res) => {
 
 /* ---------- stock changes ---------- */
 
+api.get('/transaction-drafts', requireRole('admin', 'staff'), (req, res) => {
+  const rows = db.prepare(`SELECT id,kind,created_at,updated_at,payload_json FROM stock_transaction_drafts
+    WHERE created_by=? ORDER BY updated_at DESC,id DESC`).all(req.user!.id) as {id:number;kind:string;created_at:string;updated_at:string;payload_json:string}[];
+  res.json(rows.map((row) => {
+    let payload: any = {};
+    try { payload = JSON.parse(row.payload_json); } catch { /* Ignore malformed legacy draft content. */ }
+    return { id:row.id,kind:row.kind,created_at:row.created_at,updated_at:row.updated_at,line_count:Array.isArray(payload.lines)?payload.lines.length:0 };
+  }));
+});
+
+api.get('/transaction-drafts/:id', requireRole('admin', 'staff'), (req, res) => {
+  const id=int(req.params.id);
+  const row=db.prepare('SELECT id,kind,payload_json FROM stock_transaction_drafts WHERE id=? AND created_by=?').get(id,req.user!.id) as {id:number;kind:'IN'|'OUT';payload_json:string}|undefined;
+  if(!row) throw new StockError('Saved transaction draft not found.');
+  let payload: any;
+  try { payload=JSON.parse(row.payload_json); } catch { throw new StockError('This saved draft could not be read.'); }
+  const lines=(Array.isArray(payload.lines)?payload.lines:[]).map((line:any)=>{
+    const item=db.prepare(`SELECT i.id,i.model,i.part_code,i.description,i.quantity,l.name AS location
+    FROM items i LEFT JOIN locations l ON l.id=i.location_id WHERE i.id=? AND i.archived=0`).get(int(line.item_id)) as {id:number;model:string;part_code:string;description:string;quantity:number;location:string|null}|undefined;
+    if(!item) throw new StockError('A part in this draft is no longer available.');
+    return {item,quantity:int(line.quantity)};
+  });
+  const fields=payload.fields && typeof payload.fields==='object' ? payload.fields : {};
+  const purchaseOrderId=fields.purchase_order_id?int(fields.purchase_order_id):null;
+  const order=purchaseOrderId===null?undefined:db.prepare('SELECT id,order_no,supplier FROM restock_orders WHERE id=?').get(purchaseOrderId) as {id:number;order_no:string;supplier:string}|undefined;
+  res.json({id:row.id,kind:row.kind,fields,lines,purchaseOrder:order?{id:order.id,orderNo:order.order_no,supplier:order.supplier}:null});
+});
+
+api.post('/transaction-drafts', requireRole('admin', 'staff'), (req, res) => {
+  const body=req.body??{}, kind=str(body.kind);
+  if(!['IN','OUT'].includes(kind)) throw new StockError('Choose Stock In or Stock Out for this draft.');
+  if(!Array.isArray(body.lines)||body.lines.length>200) throw new StockError('A draft can contain up to 200 item lines.');
+  const lines=body.lines.map((line:any)=>{
+    const itemId=int(line?.item_id),quantity=int(line?.quantity);
+    checkItem(itemId);
+    if(!Number.isInteger(quantity)||quantity<0) throw new StockError('Draft quantities must be whole numbers, zero or more.');
+    return {item_id:itemId,quantity};
+  });
+  if(new Set(lines.map((line:{item_id:number})=>line.item_id)).size!==lines.length) throw new StockError('Each inventory line can only appear once in a draft.');
+  const allowed=kind==='IN'?['stock_type','supplier','ss_no','packing_list','note','purchase_order_id']:['service_job_id','stock_type','stock_type_other','technician','batch_no','packing_list','note'];
+  const fields:Record<string,string>={};
+  for(const key of allowed){
+    if(body.fields?.[key]!==undefined){
+      const value=str(body.fields[key]);
+      if(value.length>500) throw new StockError(`${key} must be 500 characters or fewer.`);
+      fields[key]=value;
+    }
+  }
+  const data=JSON.stringify({fields,lines});
+  const id=body.id?int(body.id):null;
+  if(id!==null){
+    const result=db.prepare(`UPDATE stock_transaction_drafts SET kind=?,payload_json=?,updated_at=datetime('now','localtime') WHERE id=? AND created_by=?`).run(kind,data,id,req.user!.id);
+    if(!result.changes) throw new StockError('Saved transaction draft not found.');
+    res.json({id});
+  }else{
+    const result=db.prepare('INSERT INTO stock_transaction_drafts (kind,payload_json,created_by) VALUES (?,?,?)').run(kind,data,req.user!.id);
+    res.json({id:Number(result.lastInsertRowid)});
+  }
+});
+
+api.delete('/transaction-drafts/:id', requireRole('admin', 'staff'), (req, res) => {
+  const result=db.prepare('DELETE FROM stock_transaction_drafts WHERE id=? AND created_by=?').run(int(req.params.id),req.user!.id);
+  if(!result.changes) throw new StockError('Saved transaction draft not found.');
+  res.json({deleted:true});
+});
+
 api.post('/transactions', requireRole('admin', 'staff'), (req, res) => {
   const b = req.body ?? {};
   const kind = str(b.kind);
@@ -687,6 +753,7 @@ api.post('/transactions', requireRole('admin', 'staff'), (req, res) => {
       const remaining = (db.prepare('SELECT COUNT(*) AS n FROM restock_order_lines WHERE restock_order_id=? AND received_qty<order_qty').get(purchaseOrderId) as {n:number}).n;
       db.prepare("UPDATE restock_orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(remaining ? 'PARTIAL' : 'RECEIVED',purchaseOrderId);
     }
+    if (b.draft_id) db.prepare('DELETE FROM stock_transaction_drafts WHERE id=? AND created_by=?').run(int(b.draft_id),req.user!.id);
     return { transactionId:id, transactionNo, requisitionNo, balances, changes };
   })();
   res.json(result);

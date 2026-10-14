@@ -7,6 +7,8 @@ interface StockRow {
   lead_time_days: number | null; safety_stock: number | null; target_coverage_days: number | null;
 }
 interface SearchItem { id: number; model: string; part_code: string; description: string; quantity: number; location: string | null }
+interface TransactionDraftSummary { id:number; kind:'IN'|'OUT'; created_at:string; updated_at:string; line_count:number }
+interface TransactionDraftDetail { id:number; kind:'IN'|'OUT'; fields:Record<string,string>; lines:{item:SearchItem;quantity:number}[]; purchaseOrder:{id:number;orderNo:string;supplier:string}|null }
 interface MoveRow {
   key: string; created_at: string; transaction_no: string; type: string; line_count: number; units: number;
   reference: string; technician: string; repair_job_no: string | null; user: string | null;
@@ -226,7 +228,7 @@ function switchTab(tab: string) {
   if (tab === 'stock') void Promise.all([loadSummary(), loadStock()]);
   if (tab === 'counts') void loadCountLines();
   if (tab === 'backups') void loadBackups();
-  if (tab === 'movements') void loadMovements();
+  if (tab === 'movements') { void loadMovements(); if (canEdit()) void loadTransactionDrafts(); }
   if (tab === 'repairs') void loadRepairs();
   if (tab === 'parts') void loadParts();
   if (tab === 'reports') {
@@ -724,7 +726,7 @@ function openMore(r: StockRow) {
 }
 
 /** Basket transaction: every selected inventory line retains its own location. */
-async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchItem | (SearchItem & {receive_quantity?:number})) | (StockRow | SearchItem | (SearchItem & {receive_quantity?:number}))[], repairJobId?: number, purchaseOrder?:{id:number;orderNo:string;supplier:string}) {
+async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchItem | (SearchItem & {receive_quantity?:number})) | (StockRow | SearchItem | (SearchItem & {receive_quantity?:number}))[], repairJobId?: number, purchaseOrder?:{id:number;orderNo:string;supplier:string}, savedDraft?:{id:number;fields:Record<string,string>}) {
   const dlg = $<HTMLDialogElement>('dlg'), form = $<HTMLFormElement>('dlgForm');
   const initialItems=initial?(Array.isArray(initial)?initial:[initial]):[];
   const basket: { item: SearchItem; quantity: number }[] = initialItems.map((item:any)=>({item,quantity:item.receive_quantity !== undefined ? Number(item.receive_quantity) : kind === 'OUT' ? 0 : 1}));
@@ -746,7 +748,13 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
     </section>
     <section class="tx-section" id="txDetailsSection"><div class="tx-section-title"><span>2</span><div><strong>Transaction details</strong><small>${kind === 'IN' ? 'Shipment enables Supplier. The Stock In number is generated automatically.' : 'The Stock Out number is generated automatically; no RTV or JO reference number is needed.'}</small></div></div><div class="transaction-fields">${fields}</div></section>
     <label class="tx-note" id="txNoteLabel">Note (optional)<input name="note" placeholder="Add context for this transaction"></label><section id="txReview" class="tx-review" hidden></section><p class="err" id="dlgErr"></p>
-    <div class="row tx-actions"><button type="button" class="ghost" id="dlgCancel">Cancel</button><button type="button" class="ghost" id="txEditReview" hidden>Edit transaction</button><button class="tx-submit">Review ${action}</button></div>`;
+    <div class="row tx-actions"><button type="button" class="ghost" id="txSaveDraft">Save draft</button><button type="button" class="ghost" id="dlgCancel">Cancel</button><button type="button" class="ghost" id="txEditReview" hidden>Edit transaction</button><button class="tx-submit">Review ${action}</button></div>`;
+  if (savedDraft) {
+    for (const element of Array.from(form.elements)) {
+      if ((element instanceof HTMLInputElement || element instanceof HTMLSelectElement) && element.name && savedDraft.fields[element.name] !== undefined) element.value = savedDraft.fields[element.name];
+    }
+  }
+  let draftId: number | null = savedDraft?.id ?? null;
   const redraw = () => {
     $('txBasket').innerHTML = basket.length ? `<table><thead><tr><th>Part</th><th class="num">On hand</th><th>Quantity ${kind === 'OUT' ? 'to issue' : 'to receive'}</th><th></th></tr></thead><tbody>${basket.map((entry, i) => `<tr><td><strong>${esc([entry.item.part_code, entry.item.model].filter(Boolean).join(' · '))}</strong><small class="tx-part-desc">${esc(entry.item.description)}</small><span class="location-pill">${esc(entry.item.location ?? 'No location')}</span></td><td class="num">${num(entry.item.quantity)}</td><td><input aria-label="Quantity for ${esc(entry.item.part_code)}" type="number" min="${kind === 'OUT' ? 0 : 1}" step="1" data-qty="${i}" value="${entry.quantity}" required></td><td><button type="button" class="small ghost" data-remove="${i}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<div class="tx-empty"><strong>No parts added yet</strong><span>Search above to add parts to this transaction.</span></div>';
     const totalQuantity = basket.reduce((total, entry) => total + (Number.isFinite(entry.quantity) ? entry.quantity : 0), 0);
@@ -836,6 +844,14 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
     }
   };
   $('dlgCancel').onclick = () => dlg.close();
+  $('txSaveDraft').onclick = async () => {
+    const fields:Record<string,string>={};
+    for(const element of Array.from(form.elements)) if((element instanceof HTMLInputElement||element instanceof HTMLSelectElement)&&element.name&&element.name!=='txSearch') fields[element.name]=element.value;
+    try {
+      const result=await post('/transaction-drafts',{id:draftId,kind,fields,lines:basket.map(({item,quantity})=>({item_id:item.id,quantity}))}) as {id:number};
+      draftId=result.id; dlg.close(); toast('Transaction draft saved. Inventory has not changed.'); void loadTransactionDrafts();
+    } catch(error) { $('dlgErr').textContent=(error as Error).message; }
+  };
   let reviewMode = false;
   $('txEditReview').onclick = () => {
     reviewMode = false;
@@ -879,7 +895,7 @@ async function openTransaction(kind: 'IN' | 'OUT', initial?: (StockRow | SearchI
     const send = (allow: boolean) => {
       const data: Record<string, string> = {};
       new FormData(form).forEach((value, key) => { if (key !== 'txSearch') data[key] = String(value); });
-      return post('/transactions', { ...data, kind, lines: basket.map(({ item, quantity }) => ({ item_id: item.id, quantity })), allow_debt: allow });
+      return post('/transactions', { ...data, kind, draft_id:draftId, lines: basket.map(({ item, quantity }) => ({ item_id: item.id, quantity })), allow_debt: allow });
     };
     try {
       const result = await send(false) as { transactionId:number; transactionNo: string; requisitionNo: string; changes:{previousQuantity:number;newQuantity:number}[] };
@@ -993,6 +1009,31 @@ $('addLocBtn').addEventListener('click', () =>
 );
 
 /* ---------- history tab ---------- */
+
+async function loadTransactionDrafts():Promise<void> {
+  try {
+    const drafts=await api<TransactionDraftSummary[]>('/transaction-drafts');
+    $('transactionDraftsBody').innerHTML=drafts.length?drafts.map((draft)=>`<tr><td>${esc(draft.updated_at)}</td><td>${draft.kind==='IN'?'Stock In':'Stock Out'}</td><td class="num">${num(draft.line_count)}</td><td class="row"><button type="button" class="small" data-draft-open="${draft.id}">Open draft</button><button type="button" class="small ghost" data-draft-delete="${draft.id}">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty">No saved transaction drafts.</td></tr>';
+  } catch(error) { $('transactionDraftsBody').innerHTML=`<tr><td colspan="4" class="empty">${esc((error as Error).message)}</td></tr>`; }
+}
+
+async function openTransactionDraft(id:number):Promise<void> {
+  try {
+    const draft=await api<TransactionDraftDetail>(`/transaction-drafts/${id}`);
+    const initial=draft.lines.map((line)=>({...line.item,receive_quantity:line.quantity}));
+    const repairJobId=draft.fields.service_job_id?Number(draft.fields.service_job_id):undefined;
+    openTransaction(draft.kind,initial,repairJobId,draft.purchaseOrder??undefined,{id:draft.id,fields:draft.fields});
+  } catch(error) { toast((error as Error).message); }
+}
+
+$('refreshTransactionDrafts').addEventListener('click',()=>void loadTransactionDrafts());
+$('transactionDraftsBody').addEventListener('click',(event)=>{
+  const target=event.target as HTMLElement;
+  const open=target.closest<HTMLButtonElement>('[data-draft-open]');
+  const remove=target.closest<HTMLButtonElement>('[data-draft-delete]');
+  if(open) void openTransactionDraft(Number(open.dataset.draftOpen));
+  if(remove&&confirm('Delete this saved transaction draft?')) void api(`/transaction-drafts/${Number(remove.dataset.draftDelete)}`,{method:'DELETE'}).then(()=>{toast('Draft deleted.');void loadTransactionDrafts();}).catch((error)=>toast((error as Error).message));
+});
 
 async function loadMovements(page: number = movePage): Promise<void> {
   movePage = page;

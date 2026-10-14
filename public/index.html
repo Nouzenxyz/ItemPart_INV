@@ -139,6 +139,10 @@
 
   <section id="tab-movements" class="page" hidden>
     <div class="page-intro"><h1>Transactions</h1><p>Find a Stock In or Stock Out record. Select its transaction number to open the full receipt.</p></div>
+    <div class="panel transaction-drafts-panel edit-only">
+      <div class="panel-heading"><div><h2>Saved Stock In / Stock Out drafts</h2><p class="hint">Drafts are saved to your account and do not change inventory until you confirm the transaction.</p></div><button type="button" class="ghost small" id="refreshTransactionDrafts">Refresh drafts</button></div>
+      <div class="scroll"><table><thead><tr><th>Last saved</th><th>Type</th><th class="num">Part lines</th><th></th></tr></thead><tbody id="transactionDraftsBody"></tbody></table></div>
+    </div>
     <div class="bar">
       <input id="moveSearch" type="search" placeholder="Search transaction number, part, reference or technician">
       <label class="date-filter">From <input id="moveDateFrom" type="date" aria-label="History from date"></label>

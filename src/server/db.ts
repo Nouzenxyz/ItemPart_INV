@@ -140,6 +140,17 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- Unposted Stock In/Out forms are saved per account and never affect inventory until posted.
+CREATE TABLE IF NOT EXISTS stock_transaction_drafts (
+  id          INTEGER PRIMARY KEY,
+  kind        TEXT NOT NULL CHECK (kind IN ('IN','OUT')),
+  payload_json TEXT NOT NULL,
+  created_by  INTEGER NOT NULL REFERENCES users(id),
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_stock_transaction_drafts_user ON stock_transaction_drafts(created_by,updated_at DESC);
+
 -- Every change to a line is recorded here. Never edited, never deleted.
 CREATE TABLE IF NOT EXISTS movements (
   id             INTEGER PRIMARY KEY,
