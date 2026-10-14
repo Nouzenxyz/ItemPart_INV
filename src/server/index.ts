@@ -348,7 +348,7 @@ api.get('/item-search', (req, res) => {
   res.json(db.prepare(`SELECT i.id, i.model, i.part_code, i.description, i.quantity, l.name AS location
     FROM items i LEFT JOIN locations l ON l.id=i.location_id
     WHERE i.archived=0 AND (${matches.clause}) ${stockOutOnly ? 'AND i.quantity>0' : ''}
-    ORDER BY i.model,i.part_code,l.name LIMIT 1000`).all(matches.params));
+    ORDER BY i.model,i.part_code,l.name LIMIT -1`).all(matches.params));
 });
 
 /* ---------- repair / service cases ---------- */
