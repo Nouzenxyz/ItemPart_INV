@@ -813,7 +813,7 @@ api.get('/transactions/:key', (req, res) => {
   const key = str(req.params.key);
   if (key.startsWith('T:')) {
     const id = int(key.slice(2));
-    const transaction = db.prepare(`SELECT t.*,u.username AS created_by_name,au.username AS approved_by_name,j.job_no AS repair_job_no,po.order_no AS purchase_order_no
+    const transaction = db.prepare(`SELECT t.*,COALESCE(NULLIF(u.full_name,''),u.username) AS created_by_name,COALESCE(NULLIF(au.full_name,''),au.username) AS approved_by_name,j.job_no AS repair_job_no,po.order_no AS purchase_order_no
       FROM stock_transactions t LEFT JOIN users u ON u.id=t.created_by LEFT JOIN users au ON au.id=t.approved_by
       LEFT JOIN service_jobs j ON j.id=t.service_job_id LEFT JOIN restock_orders po ON po.id=t.purchase_order_id WHERE t.id=?`).get(id);
     if (!transaction) throw new StockError('Transaction not found.');
@@ -826,7 +826,7 @@ api.get('/transactions/:key', (req, res) => {
   if (key.startsWith('M:')) {
     const id = int(key.slice(2));
     const row = db.prepare(`SELECT m.id,m.type,m.created_at,m.qty_change,m.balance_after,m.reference,m.destination,m.technician,m.note,
-      i.model,i.part_code,i.description,l.name AS location,u.username AS created_by_name
+      i.model,i.part_code,i.description,l.name AS location,COALESCE(NULLIF(u.full_name,''),u.username) AS created_by_name
       FROM movements m JOIN items i ON i.id=m.item_id LEFT JOIN locations l ON l.id=m.location_id LEFT JOIN users u ON u.id=m.user_id WHERE m.id=? AND m.transaction_id IS NULL`).get(id) as any;
     if (!row) throw new StockError('History record not found.');
     res.json({ transaction: { transaction_no: `LEGACY-${id}`, kind: row.type, created_at: row.created_at, reference: row.reference,

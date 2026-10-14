@@ -401,18 +401,23 @@ dialog .row { justify-content: flex-end; margin-top: .4rem; }
 .repair-actions { border-top: 1px solid var(--line); padding-top: .8rem; margin-top: .6rem; }
 
 @media print {
-  @page { margin: 8mm; }
+  @page { margin: 6mm; }
+  html, body { background: #fff !important; }
+  body.printing-receipt #dlg::backdrop { background: transparent !important; }
   body.printing-receipt * { visibility: hidden !important; }
   body.printing-receipt #dlg, body.printing-receipt #receiptContent,
   body.printing-receipt #dlg #receiptContent * { visibility: visible !important; }
-  body.printing-receipt #dlg { display: block; position: absolute; inset: auto; top: 0; left: 0; right: auto; bottom: auto; margin: 0; width: 100%; max-width: none; max-height: none; overflow: visible; border: 0; box-shadow: none; padding: 0; }
-  body.printing-receipt #receiptContent { width: 100%; margin: 0; padding: 0; }
+  body.printing-receipt #dlg { display: block; position: absolute; inset: auto; top: 0; left: 0; right: auto; bottom: auto; margin: 0; width: 100%; max-width: none; max-height: none; overflow: visible; border: 0; border-radius: 0; box-shadow: none; padding: 0; background: #fff !important; }
+  body.printing-receipt #receiptContent { box-sizing: border-box; display: flex; flex-direction: column; width: 100%; min-height: calc(100vh - 12mm); margin: 0; padding: 0; background: #fff !important; color: #000 !important; }
   body.printing-receipt .receipt h2, body.printing-receipt .receipt h3 { text-align: left; }
   body.printing-receipt .receipt-meta { margin: .35rem 0 .65rem; }
-  body.printing-receipt .receipt-sign { margin-top: .9rem; gap: 3rem; }
+  body.printing-receipt .receipt-sign { margin-top: auto; padding-top: 1rem; gap: 3rem; }
   body.printing-receipt .receipt-sign > div { min-width: 190px; }
   body.printing-receipt #dlg form > .err, body.printing-receipt #dlg form > .row { display: none !important; }
   body.printing-receipt .receipt table { font-size: 10pt; }
+  body.printing-receipt .receipt table, body.printing-receipt .receipt thead,
+  body.printing-receipt .receipt tbody, body.printing-receipt .receipt tr,
+  body.printing-receipt .receipt th, body.printing-receipt .receipt td { background: #fff !important; color: #000 !important; box-shadow: none !important; }
 }
 
 #toast {
