@@ -362,6 +362,7 @@ dialog .row { justify-content: flex-end; margin-top: .4rem; }
 .tx-item-table td:first-child { font-weight: 700; }
 .tx-item-table td:last-child { text-align: right; }
 .tx-item-table button { padding: .15rem .42rem; font-size: .76rem; }
+.tx-item-table button.unavailable { color: var(--muted); background: var(--bg); border-color: var(--line); cursor: not-allowed; }
 .tx-basket { max-height: 300px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 .tx-basket table { min-width: 650px; }
 .tx-basket td:first-child { min-width: 220px; }
